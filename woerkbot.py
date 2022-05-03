@@ -19,31 +19,37 @@ logger = logging.getLogger(__name__)
 DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS =range(8)
 funfacts = {}
 
+def log(user, text):
+    logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
+
 def start(update: Update, context: CallbackContext):
     context.bot.send_message(chat_id=update.effective_chat.id, text="He du!")
     user = update.message.from_user
-    logger.info(user.first_name + ": Neue Anmeldung!")
+    log(user, "Neue Anmeldung!")
 
 def neuearbeit(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    funfacts[user.id] = {}
     reply_keyboard = [['Heute'],
                       ['Gestern', 'Vorgestern']]
     user = update.message.from_user
-    logger.info(user.first_name + ": Neuer Eintrag gestartet")
+    log(user, "Neuer Eintrag gestartet")
     update.message.reply_text('Welcher Tag? (Button oder Eingabe nach art YYYY;MM;DD)',
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard,
                                                                one_time_keyboard=True))
     return DATUM
     
 def datum(update: Update, context: CallbackContext):
+    user = update.message.from_user
     datu = update.message.text
     if "Heute" in datu:
-        funfacts["date"] = datetime.now().strftime("%Y;%m;%d")
+        funfacts[user.id]["date"] = datetime.now().strftime("%Y;%m;%d")
     elif "Gestern" in datu:
-        funfacts["date"] = (datetime.now() - timedelta(days=1)).strftime("%Y;%m;%d")
+        funfacts[user.id]["date"] = (datetime.now() - timedelta(days=1)).strftime("%Y;%m;%d")
     elif "Vorgestern" in datu:
-        funfacts["date"] = (datetime.now() - timedelta(days=2)).strftime("%Y;%m;%d")
+        funfacts[user.id]["date"] = (datetime.now() - timedelta(days=2)).strftime("%Y;%m;%d")
     else:
-        funfacts["date"] = datu
+        funfacts[user.id]["date"] = datu
     reply_keyboard = [['01','02','03','04','05','06'],
                       ['07','08','09','10','11','12'],
                       ['13','14','15','16','17','18'],
@@ -55,7 +61,8 @@ def datum(update: Update, context: CallbackContext):
     return VONH
 
 def vonh(update: Update, context: CallbackContext):
-    funfacts["vonh"] = update.message.text
+    user = update.message.from_user
+    funfacts[user.id]["vonh"] = update.message.text
     reply_keyboard = [['05','10','15'],
                       ['20','25','30'],
                       ['35','40','45'],
@@ -67,7 +74,8 @@ def vonh(update: Update, context: CallbackContext):
     return VONM
 
 def vonm(update: Update, context: CallbackContext):
-    funfacts["vonm"] = update.message.text
+    user = update.message.from_user
+    funfacts[user.id]["vonm"] = update.message.text
     reply_keyboard = [['01','02','03','04','05','06'],
                       ['07','08','09','10','11','12'],
                       ['13','14','15','16','17','18'],
@@ -78,7 +86,8 @@ def vonm(update: Update, context: CallbackContext):
     return BISH
 
 def bish(update: Update, context: CallbackContext):
-    funfacts["bish"] = update.message.text
+    user = update.message.from_user
+    funfacts[user.id]["bish"] = update.message.text
     reply_keyboard = [['05','10','15'],
                       ['20','25','30'],
                       ['35','40','45'],
@@ -89,7 +98,8 @@ def bish(update: Update, context: CallbackContext):
     return BISM
 
 def bism(update: Update, context: CallbackContext):
-    funfacts["bism"] = update.message.text
+    user = update.message.from_user
+    funfacts[user.id]["bism"] = update.message.text
     reply_keyboard = [['0'],['5','10','15'],['20','25','30'],
                       ['45','60','75','90']]
     update.message.reply_text('kk.\nWie lange pausiert? (Minuten)',
@@ -99,15 +109,26 @@ def bism(update: Update, context: CallbackContext):
 
 def pause(update: Update, context: CallbackContext):
     user = update.message.from_user
-    funfacts["pau"] = update.message.text
-    zeit = zeitrechner(*list(map(int, [funfacts["vonh"], funfacts["vonm"], funfacts["bish"], funfacts["bism"], funfacts["pau"]])))
-    update.message.reply_text(update.message.text + ' also. \nGuten Feierabend! Nochmal: ' + funfacts["vonh"] + ":" + funfacts["vonm"] + ", " + funfacts["bish"] + ":" + funfacts["bism"] + ", "+ funfacts["pau"] + ".\nDas macht " + "{:.2f}".format(zeit) + " Stunden.",)
+    funfacts[user.id]["pau"] = update.message.text
+    zeit = zeitrechner(*list(map(int, [funfacts[user.id]["vonh"],
+                                       funfacts[user.id]["vonm"],
+                                       funfacts[user.id]["bish"],
+                                       funfacts[user.id]["bism"],
+                                       funfacts[user.id]["pau"]])))
+    update.message.reply_text(update.message.text + ' also. \nGuten Feierabend! Nochmal: ' +
+                              funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
+                              funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
+                              funfacts[user.id]["pau"] + ".\nDas macht " + "{:.2f}".format(zeit) + " Stunden.",)
     f = open("jdienstbuch.txt","a+")
-#    f.write(datetime.now().strftime("%Y;%m;%d"))
-    f.write(funfacts["date"])
-    f.write(";" + funfacts["vonh"] + ";" + funfacts["vonm"] + ";" + funfacts["bish"] + ";" + funfacts["bism"] + ";" + funfacts["pau"] + "\n")
+
+    f.write(funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
+            funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
+            funfacts[user.id]["bism"] + ";" + funfacts[user.id]["pau"] + "\n")
     f.close
-    logger.info(user.first_name + ": Neuer Eintrag angelegt: "+ funfacts["vonh"] + ":" + funfacts["vonm"] + ";" + funfacts["bish"] + ":" + funfacts["bism"] + ";" + funfacts["pau"])
+    log(user, "Neuer Eintrag angelegt: " +
+        funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
+        funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
+        funfacts[user.id]["pau"])
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext):
@@ -116,10 +137,6 @@ def cancel(update: Update, context: CallbackContext):
     update.message.reply_text('OK, dann besser nicht.',
                               reply_markup = ReplyKeyboardRemove())
     return ConversationHandler.END
-
-#def zeitrechner(fun):
-#    soviel = int(fun["bish"]) - int(fun["vonh"]) + (int(fun["bism"]) - int(fun["vonm"]) - int(fun["pau"])) / 60
-#    return soviel
 
 def zeitrechner(von_h, von_m, bis_h, bis_m, paus):
     soviel = bis_h - von_h + (bis_m - von_m - paus) / 60
@@ -239,7 +256,7 @@ def stats(update: Update, context: CallbackContext):
     
 def raw(update: Update, context: CallbackContext):
     user = update.message.from_user
-    logger.info(user.first_name + ": Rohdaten abgerufen")
+    log(user, "Rohdaten abgerufen.")
     with open("jdienstbuch.txt","r") as f:
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text="`" + f.read() + "`",
