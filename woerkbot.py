@@ -119,7 +119,7 @@ def pause(update: Update, context: CallbackContext):
                               funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
                               funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
                               funfacts[user.id]["pau"] + ".\nDas macht " + "{:.2f}".format(zeit) + " Stunden.",)
-    f = open("jdienstbuch.txt","a+")
+    f = open("dbs/" + str(user.id) + ".txt", "a+")
 
     f.write(funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
             funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
@@ -133,7 +133,7 @@ def pause(update: Update, context: CallbackContext):
 
 def cancel(update: Update, context: CallbackContext):
     user = update.message.from_user
-    logger.info(user.first_name + ": Aktion abgebrochen.")
+    log(user, "Aktion abgebrochen.")
     update.message.reply_text('OK, dann besser nicht.',
                               reply_markup = ReplyKeyboardRemove())
     return ConversationHandler.END
@@ -147,8 +147,8 @@ def stats(update: Update, context: CallbackContext):
     #                          text=":3",
     #                          parse_mode=ParseMode.MARKDOWN_V2)
     user = update.message.from_user
-    logger.info(user.first_name + ": Stats abgerufen")
-    with open("jdienstbuch.txt","r") as f:
+    log(user, "Stats abgerufen")
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
         ndata = []
         for line in f:
             el = list(map(int, line.rstrip("\n").split(";")))
@@ -245,10 +245,10 @@ def stats(update: Update, context: CallbackContext):
     ax.set_xticklabels(datelist,rotation=90)
     ax.axhline(y = 6, color='k', linestyle='--')
     plt.tight_layout()
-    plt.savefig("plotto.png")
+    plt.savefig("plots/" + str(user.id) + ".png")
     plt.close(fig)
     
-    with open("plotto.png","rb") as pho:
+    with open("plots/" + str(user.id) + ".png","rb") as pho:
         context.bot.send_photo(chat_id=update.effective_chat.id,
                                photo = pho)
         
@@ -257,16 +257,16 @@ def stats(update: Update, context: CallbackContext):
 def raw(update: Update, context: CallbackContext):
     user = update.message.from_user
     log(user, "Rohdaten abgerufen.")
-    with open("jdienstbuch.txt","r") as f:
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text="`" + f.read() + "`",
                                  parse_mode=ParseMode.MARKDOWN_V2)
         
 def remove(update: Update, context: CallbackContext):
     user = update.message.from_user
-    logger.info(user.first_name + ": Eintrag entfernen!")
+    log(user, "Eintrag entfernen!")
     outstring = "`"
-    with open("jdienstbuch.txt", "r") as f:
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
         for i, line in enumerate(f.readlines()):
             outstring += "{0:04d}".format(i) + ": " + line
     context.bot.send_message(chat_id=update.effective_chat.id,
@@ -276,12 +276,12 @@ def remove(update: Update, context: CallbackContext):
     
 def raus(update: Update, context: CallbackContext):
     user = update.message.from_user
-    logger.info(user.first_name + ": Eintrag entfernt.")
+    log(user, "Eintrag entfernt.")
     id = int(update.message.text)
     a = False
-    with open("jdienstbuch.txt", "r") as f:
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
         lines = f.readlines()
-    with open("jdienstbuch.txt", "w") as f:
+    with open("dbs/" + str(user.id) + ".txt", "w") as f:
         for i, line in enumerate(lines):
             if i != id:
                 f.write(line)
