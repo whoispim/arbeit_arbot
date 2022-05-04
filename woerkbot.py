@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, ParseMode
 from telegram.ext import Updater, CallbackContext, CommandHandler, ConversationHandler, MessageHandler, Filters
 from configparser import SafeConfigParser
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 import logging
 import math
 import matplotlib.pyplot as plt
@@ -30,8 +30,8 @@ def start(update: Update, context: CallbackContext):
                  "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
                  "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
                  "Der Bot geht aktuell davon aus, dass sich deine Arbeitszeit im "
-                 "Normalfall auf 5 Tage verteilt. Zur akkuraten Berechnung von benötigt "
-                 "er deine wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
+                 "Normalfall auf 5 Tage verteilt. Zur akkuraten Berechnung von Überstunden "
+                 "benötigt er deine wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
 #    outstring = outstring.replace(".", "\.")
     context.bot.send_message(chat_id=update.effective_chat.id, text=outstring)
     user = update.message.from_user
@@ -184,7 +184,8 @@ def stats(update: Update, context: CallbackContext):
         ndata = []
         for i, line in enumerate(f):
             if i == 0:
-                pass
+                hourperweek = int(line.rstrip("\n"))
+                hourperday = hourperweek / 5
             else:
                 el = list(map(int, line.rstrip("\n").split(";")))
                 tag = date(*el[0:3])
@@ -235,14 +236,15 @@ def stats(update: Update, context: CallbackContext):
         outstring += "*__Letzten Monat:__*\n"
         outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
                      "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
+                     "Soll: " + "{:.2f}".format(hourperday * len(times)) + " h\n" +
                      "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
     
     times = [row[5] for row in ndata]
-    ueber_unter = 6*len(times) - sum(times)
+    ueber_unter = hourperday * len(times) - sum(times)
     outstring += "*__Insgesamt:__*\n"
     outstring += ("Anzahl an Einträgen: " + str(len(ndata)) + "\n" +
                  "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                 "Soll: " + "{:.2f}".format(6*len(times)) + " h\n" +
+                 "Soll: " + "{:.2f}".format(hourperday * len(times)) + " h\n" +
                  "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n")
     if ueber_unter == 0:
         outstring += "\n"
@@ -261,7 +263,17 @@ def stats(update: Update, context: CallbackContext):
         for line in ndata:
             if line[0] == dat:
                 timelist[i] = max(line[5], 0.1) # show zeros
-                
+    
+    # weekly averages
+    weeklyavg = {}
+    for week in set(line[4] for line in ndata):
+        days = [i for i in ndata if i[4] == week]
+        avg = sum(i[5] for i in days) / 5
+        datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
+        datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
+        weeklyavg[week] = [[datemin, datemax], [avg, avg]]
+    
+        
     # plt.style.use("ggplot")
     # fig,ax = plt.subplots()
     # ax.barh(datelist,timelist, color="#2a9c48")
@@ -274,11 +286,13 @@ def stats(update: Update, context: CallbackContext):
     fig,ax = plt.subplots()
     fig.set_size_inches(11, 5, forward=True)
     ax.bar(datelist,timelist, color="#2a9c48")
+    for week in weeklyavg:
+        ax.plot(*weeklyavg[week], color='#124720', linestyle='dotted')
     ax.autoscale(enable=True, axis='x', tight=True)
     ax.set_yticks(range(math.ceil(max(timelist))))
     ax.set_xticks(datelist)
     ax.set_xticklabels(datelist,rotation=90)
-    ax.axhline(y = 6, color='k', linestyle='--')
+    ax.axhline(y = hourperday, color='k', linestyle='--')
     plt.tight_layout()
     plt.savefig("plots/" + str(user.id) + ".png")
     plt.close(fig)
