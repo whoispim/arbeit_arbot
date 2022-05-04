@@ -6,6 +6,7 @@ import logging
 import math
 import matplotlib.pyplot as plt
 from operator import itemgetter
+from os.path import exists
 
 config = SafeConfigParser()
 config.read("ident.ini")
@@ -16,16 +17,47 @@ dispatcher = updater.dispatcher
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS =range(8)
+DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER =range(9)
 funfacts = {}
 
 def log(user, text):
     logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
 
 def start(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="He du!")
+    outstring = ("Hallo!\n"
+                 "Dieser Bot ist ein Hobbyprojekt und aktiv in Entwicklung. "
+                 "Bitte verlasse dich nicht darauf, dass alles immer korrekt "
+                 "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
+                 "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
+                 "Der Bot geht aktuell davon aus, dass sich deine Arbeitszeit im "
+                 "Normalfall auf 5 Tage verteilt. Zur akkuraten Berechnung von benötigt "
+                 "er deine wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
+#    outstring = outstring.replace(".", "\.")
+    context.bot.send_message(chat_id=update.effective_chat.id, text=outstring)
     user = update.message.from_user
     log(user, "Neue Anmeldung!")
+    return NEWUSER
+
+def newuser(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    hours = int(update.message.text)
+    if exists("dbs/" + str(user.id) + ".txt"):
+        with open("dbs/" + str(user.id) + ".txt", "r") as f:
+            lines = f.readlines()
+        with open("dbs/" + str(user.id) + ".txt", "w") as f:
+            f.write(str(hours) + "\n")
+            for i, line in enumerate(lines):
+                if i > 0:
+                    f.write(line)
+        log(user, "Gibbet schon, nun mit " + str(hours) + " Stunden.")
+        update.message.reply_text("User war bereits angelegt, Wochenstundenzahl wurde mit " + 
+                                  str(hours) + " h überschrieben.")
+    else:
+        with open("dbs/" + str(user.id) + ".txt", "a+") as f:
+            f.write(str(hours) + "\n")
+            log(user, "User mit " + str(hours) + " Wochenstunden angelegt.")
+            update.message.reply_text(str(hours) + " sollen es sein.")
+    return ConversationHandler.END
 
 def neuearbeit(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -150,14 +182,17 @@ def stats(update: Update, context: CallbackContext):
     log(user, "Stats abgerufen")
     with open("dbs/" + str(user.id) + ".txt", "r") as f:
         ndata = []
-        for line in f:
-            el = list(map(int, line.rstrip("\n").split(";")))
-            tag = date(*el[0:3])
-            # datestring, year, month, day, week, worktime
-            ndata.append([tag,
-                          *el[0:3],
-                          tag.isocalendar()[1],
-                          zeitrechner(*list(map(int, el[3:])))])
+        for i, line in enumerate(f):
+            if i == 0:
+                pass
+            else:
+                el = list(map(int, line.rstrip("\n").split(";")))
+                tag = date(*el[0:3])
+                # datestring, year, month, day, week, worktime
+                ndata.append([tag,
+                              *el[0:3],
+                              tag.isocalendar()[1],
+                              zeitrechner(*list(map(int, el[3:])))])
     ndata = sorted(ndata, key=itemgetter(0))
     outstring = ""
     week = date.today().isocalendar()[1]
@@ -268,7 +303,10 @@ def remove(update: Update, context: CallbackContext):
     outstring = "`"
     with open("dbs/" + str(user.id) + ".txt", "r") as f:
         for i, line in enumerate(f.readlines()):
-            outstring += "{0:04d}".format(i) + ": " + line
+            if i == 0:
+                pass
+            else:
+                outstring += "{0:04d}".format(i) + ": " + line
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text=outstring + "`\nWelcher Eintrag soll gelöscht werden? \(ID\)",
                              parse_mode=ParseMode.MARKDOWN_V2)
@@ -312,25 +350,32 @@ conv_handler = ConversationHandler(
 remconv_handler = ConversationHandler(
     entry_points=[CommandHandler('remove',remove)],
     states={
-        RAUS: [MessageHandler(Filters.regex('^[0-9]{4}$'), raus)],
+        RAUS: [MessageHandler(Filters.regex('^(?!0000)[0-9]{4}$'), raus)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
+start_handler = ConversationHandler(
+    entry_points=[CommandHandler('start',start)],
+    states={
+        NEWUSER: [MessageHandler(Filters.regex('^[0-9]+$'), newuser)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
 
-start_handler = CommandHandler('start', start)
+#start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 dispatcher.add_handler(conv_handler)
 
-neuearbeit_handler = CommandHandler('a', neuearbeit)
-dispatcher.add_handler(neuearbeit_handler)
+#neuearbeit_handler = CommandHandler('a', neuearbeit)
+#dispatcher.add_handler(neuearbeit_handler)
 
 stats_handler = CommandHandler('stats', stats)
 dispatcher.add_handler(stats_handler)
 raw_handler = CommandHandler('raw', raw)
 dispatcher.add_handler(raw_handler)
 
-remove_handler = CommandHandler('remove', remove)
-dispatcher.add_handler(conv_handler)
+#remove_handler = CommandHandler('remove', remove)
+#dispatcher.add_handler(conv_handler)
 dispatcher.add_handler(remconv_handler)
 
 updater.start_polling()
