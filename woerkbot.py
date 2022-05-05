@@ -34,6 +34,17 @@ def db_ok(uid):
     else:
         return False
 
+def nicetime(hours):
+    hour = int(hours)
+    minute = math.floor((hours * 60 % 60) + .5)
+    if minute == 60:
+        hour += 1
+        minute = 0
+    if minute != 0:
+        return "%d h, %02d min" % (hour, minute)
+    else:
+        return "%d h" % hour
+
 def start(update: Update, context: CallbackContext):
     outstring = ("Hallo!\n"
                  "Dieser Bot ist ein Hobbyprojekt und aktiv in Entwicklung. "
@@ -167,7 +178,7 @@ def pause(update: Update, context: CallbackContext):
     update.message.reply_text(update.message.text + ' also. \nGuten Feierabend! Nochmal: ' +
                               funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
                               funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
-                              funfacts[user.id]["pau"] + ".\nDas macht " + "{:.2f}".format(zeit) + " Stunden.",)
+                              funfacts[user.id]["pau"] + ".\nDas macht " + nicetime(zeit) + ".",)
     f = open("dbs/" + str(user.id) + ".txt", "a+")
 
     f.write(funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
@@ -222,8 +233,8 @@ def stats(update: Update, context: CallbackContext):
         if len(times) > 0:
             outstring += "*__Diese Woche:__*\n"
             outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
+                         "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
+                         "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
         week = (week - 2)%52 + 1
         times = []
         for line in ndata:
@@ -232,8 +243,8 @@ def stats(update: Update, context: CallbackContext):
         if len(times) > 0:
             outstring += "*__Letzte Woche:__*\n"
             outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
+                         "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
+                         "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
     
         month = date.today().month
         times = []
@@ -243,8 +254,8 @@ def stats(update: Update, context: CallbackContext):
         if len(times) > 0:
             outstring += "*__Diesen Monat:__*\n"
             outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
+                         "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
+                         "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
         month = (month - 2)%12 + 1
         times = []
         for line in ndata:
@@ -253,23 +264,23 @@ def stats(update: Update, context: CallbackContext):
         if len(times) > 0:
             outstring += "*__Letzten Monat:__*\n"
             outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                         "Soll: " + "{:.2f}".format(hourperday * len(times)) + " h\n" +
-                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
+                         "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
+                         "Soll: " + nicetime(hourperday * len(times)) + "\n" +
+                         "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
         
         times = [row[5] for row in ndata]
         ueber_unter = hourperday * len(times) - sum(times)
         outstring += "*__Insgesamt:__*\n"
         outstring += ("Anzahl an Einträgen: " + str(len(ndata)) + "\n" +
-                     "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                     "Soll: " + "{:.2f}".format(hourperday * len(times)) + " h\n" +
-                     "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n")
+                     "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
+                     "Soll: " + nicetime(hourperday * len(times)) + "\n" +
+                     "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n")
         if ueber_unter == 0:
             outstring += "\n"
         elif ueber_unter > 0:
-            outstring += "Du bist " + "{:.2f}".format(ueber_unter) + " h im Minus.\n\n"
+            outstring += "Du bist " + nicetime(ueber_unter) + " im Minus.\n\n"
         else:
-            outstring += "Du bist " + "{:.2f}".format(-ueber_unter) + " h im Plus.\n\n"
+            outstring += "Du bist " + nicetime(-ueber_unter) + " im Plus.\n\n"
         
         outstring = outstring.replace(".", "\.")
         
@@ -286,7 +297,11 @@ def stats(update: Update, context: CallbackContext):
         weeklyavg = {}
         for week in set(line[4] for line in ndata):
             days = [i for i in ndata if i[4] == week]
-            avg = sum(i[5] for i in days) / 5
+            if week == date.today().isocalendar()[1]:
+                numdays = len(days)
+            else:
+                numdays = 5
+            avg = sum(i[5] for i in days) / numdays
             datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
             datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
             weeklyavg[week] = [[datemin, datemax], [avg, avg]]
