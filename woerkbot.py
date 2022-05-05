@@ -1,11 +1,12 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, ParseMode
 from telegram.ext import Updater, CallbackContext, CommandHandler, ConversationHandler, MessageHandler, Filters
 from configparser import SafeConfigParser
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 import logging
 import math
 import matplotlib.pyplot as plt
 from operator import itemgetter
+from os.path import exists
 
 config = SafeConfigParser()
 config.read("ident.ini")
@@ -16,28 +17,76 @@ dispatcher = updater.dispatcher
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS =range(8)
+DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER =range(9)
 funfacts = {}
 
 def log(user, text):
     logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
 
+def db_ok(uid):
+    if exists("dbs/" + str(uid) + ".txt"):
+        with open("dbs/" + str(uid) + ".txt", "r") as f:
+            f.readline()
+            if f.readline() != "":
+                return True
+            else:
+                return False
+    else:
+        return False
+
 def start(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="He du!")
+    outstring = ("Hallo!\n"
+                 "Dieser Bot ist ein Hobbyprojekt und aktiv in Entwicklung. "
+                 "Bitte verlasse dich nicht darauf, dass alles immer korrekt "
+                 "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
+                 "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
+                 "Der Bot geht aktuell davon aus, dass sich deine Arbeitszeit im "
+                 "Normalfall auf 5 Tage verteilt. Zur akkuraten Berechnung von Überstunden "
+                 "benötigt er deine wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
+#    outstring = outstring.replace(".", "\.")
+    context.bot.send_message(chat_id=update.effective_chat.id, text=outstring)
     user = update.message.from_user
     log(user, "Neue Anmeldung!")
+    return NEWUSER
+
+def newuser(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    hours = int(update.message.text)
+    if exists("dbs/" + str(user.id) + ".txt"):
+        with open("dbs/" + str(user.id) + ".txt", "r") as f:
+            lines = f.readlines()
+        with open("dbs/" + str(user.id) + ".txt", "w") as f:
+            f.write(str(hours) + "\n")
+            for i, line in enumerate(lines):
+                if i > 0:
+                    f.write(line)
+        log(user, "Gibbet schon, nun mit " + str(hours) + " Stunden.")
+        update.message.reply_text("User war bereits angelegt, Wochenstundenzahl wurde mit " + 
+                                  str(hours) + " h überschrieben.")
+    else:
+        with open("dbs/" + str(user.id) + ".txt", "a+") as f:
+            f.write(str(hours) + "\n")
+            log(user, "User mit " + str(hours) + " Wochenstunden angelegt.")
+            update.message.reply_text(str(hours) + " Stunden sollen es sein. Bitte lege nun mit /a deinen ersten Eintrag an.")
+    return ConversationHandler.END
 
 def neuearbeit(update: Update, context: CallbackContext):
     user = update.message.from_user
-    funfacts[user.id] = {}
-    reply_keyboard = [['Heute'],
-                      ['Gestern', 'Vorgestern']]
-    user = update.message.from_user
-    log(user, "Neuer Eintrag gestartet")
-    update.message.reply_text('Welcher Tag? (Button oder Eingabe nach art YYYY;MM;DD)',
-                              reply_markup=ReplyKeyboardMarkup(reply_keyboard,
-                                                               one_time_keyboard=True))
-    return DATUM
+    if exists("dbs/" + str(user.id) + ".txt"):
+        funfacts[user.id] = {}
+        reply_keyboard = [['Heute'],
+                          ['Gestern', 'Vorgestern']]
+        user = update.message.from_user
+        log(user, "Neuer Eintrag gestartet")
+        update.message.reply_text('Welcher Tag? (Button oder Eingabe nach art YYYY;MM;DD)',
+                                  reply_markup=ReplyKeyboardMarkup(reply_keyboard,
+                                                                   one_time_keyboard=True))
+        return DATUM
+    else:
+        log(user, "Error! Neuer Eintrag konne nicht angelegt werden, Datei existiert nicht.")
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text="Error! Bitte erst über /start ein Dienstbuch anlegen.")
+        return ConversationHandler.END
     
 def datum(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -147,132 +196,168 @@ def stats(update: Update, context: CallbackContext):
     #                          text=":3",
     #                          parse_mode=ParseMode.MARKDOWN_V2)
     user = update.message.from_user
-    log(user, "Stats abgerufen")
-    with open("dbs/" + str(user.id) + ".txt", "r") as f:
-        ndata = []
-        for line in f:
-            el = list(map(int, line.rstrip("\n").split(";")))
-            tag = date(*el[0:3])
-            # datestring, year, month, day, week, worktime
-            ndata.append([tag,
-                          *el[0:3],
-                          tag.isocalendar()[1],
-                          zeitrechner(*list(map(int, el[3:])))])
-    ndata = sorted(ndata, key=itemgetter(0))
-    outstring = ""
-    week = date.today().isocalendar()[1]
-    times = []
-    for line in ndata:
-        if line[4] == week:
-            times.append(line[5])
-    if len(times) > 0:
-        outstring += "*__Diese Woche:__*\n"
-        outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                     "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                     "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
-    week = (week - 2)%52 + 1
-    times = []
-    for line in ndata:
-        if line[4] == week:
-            times.append(line[5])
-    if len(times) > 0:
-        outstring += "*__Letzte Woche:__*\n"
-        outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                     "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                     "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
-
-    month = date.today().month
-    times = []
-    for line in ndata:
-        if line[2] == month:
-            times.append(line[5])
-    if len(times) > 0:
-        outstring += "*__Diesen Monat:__*\n"
-        outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                     "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                     "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
-    month = (month - 2)%12 + 1
-    times = []
-    for line in ndata:
-        if line[2] == month:
-            times.append(line[5])
-    if len(times) > 0:
-        outstring += "*__Letzten Monat:__*\n"
-        outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
-                     "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                     "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
-    
-    times = [row[5] for row in ndata]
-    ueber_unter = 6*len(times) - sum(times)
-    outstring += "*__Insgesamt:__*\n"
-    outstring += ("Anzahl an Einträgen: " + str(len(ndata)) + "\n" +
-                 "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
-                 "Soll: " + "{:.2f}".format(6*len(times)) + " h\n" +
-                 "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n")
-    if ueber_unter == 0:
-        outstring += "\n"
-    elif ueber_unter > 0:
-        outstring += "Du bist " + "{:.2f}".format(ueber_unter) + " h im Minus.\n\n"
-    else:
-        outstring += "Du bist " + "{:.2f}".format(-ueber_unter) + " h im Plus.\n\n"
-    
-    outstring = outstring.replace(".", "\.")
-    
-    day1 = ndata[0][0]
-    dayrange = date.today() - day1
-    datelist = [day1 + timedelta(days = x) for x in range(dayrange.days + 1)]
-    timelist = [0] * (dayrange.days+1)
-    for i, dat in enumerate(datelist):
+    if db_ok(user.id):
+        log(user, "Stats abgerufen")
+        with open("dbs/" + str(user.id) + ".txt", "r") as f:
+            ndata = []
+            for i, line in enumerate(f):
+                if i == 0:
+                    hourperweek = int(line.rstrip("\n"))
+                    hourperday = hourperweek / 5
+                else:
+                    el = list(map(int, line.rstrip("\n").split(";")))
+                    tag = date(*el[0:3])
+                    # datestring, year, month, day, week, worktime
+                    ndata.append([tag,
+                                  *el[0:3],
+                                  tag.isocalendar()[1],
+                                  zeitrechner(*list(map(int, el[3:])))])
+        ndata = sorted(ndata, key=itemgetter(0))
+        outstring = ""
+        week = date.today().isocalendar()[1]
+        times = []
         for line in ndata:
-            if line[0] == dat:
-                timelist[i] = max(line[5], 0.1) # show zeros
-                
-    # plt.style.use("ggplot")
-    # fig,ax = plt.subplots()
-    # ax.barh(datelist,timelist, color="#2a9c48")
-    # ax.set_yticks(datelist)
-    # ax.set_xticks(range(math.ceil(max(timelist))))
-    # ax.invert_yaxis()
-    # ax.axvline(x = 6, color='k', linestyle='--')
+            if line[4] == week:
+                times.append(line[5])
+        if len(times) > 0:
+            outstring += "*__Diese Woche:__*\n"
+            outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
+                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
+                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
+        week = (week - 2)%52 + 1
+        times = []
+        for line in ndata:
+            if line[4] == week:
+                times.append(line[5])
+        if len(times) > 0:
+            outstring += "*__Letzte Woche:__*\n"
+            outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
+                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
+                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
     
-    plt.style.use("ggplot")
-    fig,ax = plt.subplots()
-    fig.set_size_inches(11, 5, forward=True)
-    ax.bar(datelist,timelist, color="#2a9c48")
-    ax.autoscale(enable=True, axis='x', tight=True)
-    ax.set_yticks(range(math.ceil(max(timelist))))
-    ax.set_xticks(datelist)
-    ax.set_xticklabels(datelist,rotation=90)
-    ax.axhline(y = 6, color='k', linestyle='--')
-    plt.tight_layout()
-    plt.savefig("plots/" + str(user.id) + ".png")
-    plt.close(fig)
-    
-    with open("plots/" + str(user.id) + ".png","rb") as pho:
-        context.bot.send_photo(chat_id=update.effective_chat.id,
-                               photo = pho)
+        month = date.today().month
+        times = []
+        for line in ndata:
+            if line[2] == month:
+                times.append(line[5])
+        if len(times) > 0:
+            outstring += "*__Diesen Monat:__*\n"
+            outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
+                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
+                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
+        month = (month - 2)%12 + 1
+        times = []
+        for line in ndata:
+            if line[2] == month:
+                times.append(line[5])
+        if len(times) > 0:
+            outstring += "*__Letzten Monat:__*\n"
+            outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
+                         "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
+                         "Soll: " + "{:.2f}".format(hourperday * len(times)) + " h\n" +
+                         "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n\n")
         
-    update.message.reply_text(outstring, parse_mode=ParseMode.MARKDOWN_V2)
+        times = [row[5] for row in ndata]
+        ueber_unter = hourperday * len(times) - sum(times)
+        outstring += "*__Insgesamt:__*\n"
+        outstring += ("Anzahl an Einträgen: " + str(len(ndata)) + "\n" +
+                     "Durchschn. Zeit: " + "{:.2f}".format(sum(times)/len(times)) + " h\n" +
+                     "Soll: " + "{:.2f}".format(hourperday * len(times)) + " h\n" +
+                     "Arbeitszeit ges.: " + "{:.2f}".format(sum(times)) + " h\n")
+        if ueber_unter == 0:
+            outstring += "\n"
+        elif ueber_unter > 0:
+            outstring += "Du bist " + "{:.2f}".format(ueber_unter) + " h im Minus.\n\n"
+        else:
+            outstring += "Du bist " + "{:.2f}".format(-ueber_unter) + " h im Plus.\n\n"
+        
+        outstring = outstring.replace(".", "\.")
+        
+        day1 = ndata[0][0]
+        dayrange = date.today() - day1
+        datelist = [day1 + timedelta(days = x) for x in range(dayrange.days + 1)]
+        timelist = [0] * (dayrange.days+1)
+        for i, dat in enumerate(datelist):
+            for line in ndata:
+                if line[0] == dat:
+                    timelist[i] = max(line[5], 0.1) # show zeros
+        
+        # weekly averages
+        weeklyavg = {}
+        for week in set(line[4] for line in ndata):
+            days = [i for i in ndata if i[4] == week]
+            avg = sum(i[5] for i in days) / 5
+            datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
+            datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
+            weeklyavg[week] = [[datemin, datemax], [avg, avg]]
+        
+            
+        # plt.style.use("ggplot")
+        # fig,ax = plt.subplots()
+        # ax.barh(datelist,timelist, color="#2a9c48")
+        # ax.set_yticks(datelist)
+        # ax.set_xticks(range(math.ceil(max(timelist))))
+        # ax.invert_yaxis()
+        # ax.axvline(x = 6, color='k', linestyle='--')
+        
+        plt.style.use("ggplot")
+        fig,ax = plt.subplots()
+        fig.set_size_inches(11, 5, forward=True)
+        ax.bar(datelist,timelist, color="#2a9c48")
+        for week in weeklyavg:
+            ax.plot(*weeklyavg[week], color='#124720', linestyle='dotted')
+        ax.autoscale(enable=True, axis='x', tight=True)
+        ax.set_yticks(range(math.ceil(max(timelist))))
+        ax.set_xticks(datelist)
+        ax.set_xticklabels(datelist,rotation=90)
+        ax.axhline(y = hourperday, color='k', linestyle='--')
+        plt.tight_layout()
+        plt.savefig("plots/" + str(user.id) + ".png")
+        plt.close(fig)
+        
+        with open("plots/" + str(user.id) + ".png","rb") as pho:
+            context.bot.send_photo(chat_id=update.effective_chat.id,
+                                   photo = pho)
+            
+        update.message.reply_text(outstring, parse_mode=ParseMode.MARKDOWN_V2)
+    else:
+        log(user, "Error! Stats konnten nicht erstellt werden, Datei existiert nicht.")
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
     
 def raw(update: Update, context: CallbackContext):
     user = update.message.from_user
-    log(user, "Rohdaten abgerufen.")
-    with open("dbs/" + str(user.id) + ".txt", "r") as f:
+    if db_ok(user.id):
+        log(user, "Rohdaten abgerufen.")
+        with open("dbs/" + str(user.id) + ".txt", "r") as f:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text="`" + f.read() + "`",
+                                     parse_mode=ParseMode.MARKDOWN_V2)
+    else:
+        log(user, "Error! Rohdaten konnten nicht abgerufen werden, Datei existiert nicht.")
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="`" + f.read() + "`",
-                                 parse_mode=ParseMode.MARKDOWN_V2)
+                                         text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
         
 def remove(update: Update, context: CallbackContext):
     user = update.message.from_user
-    log(user, "Eintrag entfernen!")
-    outstring = "`"
-    with open("dbs/" + str(user.id) + ".txt", "r") as f:
-        for i, line in enumerate(f.readlines()):
-            outstring += "{0:04d}".format(i) + ": " + line
-    context.bot.send_message(chat_id=update.effective_chat.id,
-                             text=outstring + "`\nWelcher Eintrag soll gelöscht werden? \(ID\)",
-                             parse_mode=ParseMode.MARKDOWN_V2)
-    return RAUS
+    if db_ok(user.id):
+        log(user, "Eintrag entfernen!")
+        outstring = "`"
+        with open("dbs/" + str(user.id) + ".txt", "r") as f:
+            for i, line in enumerate(f.readlines()):
+                if i == 0:
+                    pass
+                else:
+                    outstring += "{0:04d}".format(i) + ": " + line
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text=outstring + "`\nWelcher Eintrag soll gelöscht werden? \(ID\)",
+                                 parse_mode=ParseMode.MARKDOWN_V2)
+        return RAUS
+    else:
+        log(user, "Error! Eintrag konnte nicht entfernt werden, Datei existiert nicht.")
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
+        return ConversationHandler.END
     
 def raus(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -312,25 +397,32 @@ conv_handler = ConversationHandler(
 remconv_handler = ConversationHandler(
     entry_points=[CommandHandler('remove',remove)],
     states={
-        RAUS: [MessageHandler(Filters.regex('^[0-9]{4}$'), raus)],
+        RAUS: [MessageHandler(Filters.regex('^(?!0000)[0-9]{4}$'), raus)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
+start_handler = ConversationHandler(
+    entry_points=[CommandHandler('start',start)],
+    states={
+        NEWUSER: [MessageHandler(Filters.regex('^[0-9]+$'), newuser)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
 
-start_handler = CommandHandler('start', start)
+#start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 dispatcher.add_handler(conv_handler)
 
-neuearbeit_handler = CommandHandler('a', neuearbeit)
-dispatcher.add_handler(neuearbeit_handler)
+#neuearbeit_handler = CommandHandler('a', neuearbeit)
+#dispatcher.add_handler(neuearbeit_handler)
 
 stats_handler = CommandHandler('stats', stats)
 dispatcher.add_handler(stats_handler)
 raw_handler = CommandHandler('raw', raw)
 dispatcher.add_handler(raw_handler)
 
-remove_handler = CommandHandler('remove', remove)
-dispatcher.add_handler(conv_handler)
+#remove_handler = CommandHandler('remove', remove)
+#dispatcher.add_handler(conv_handler)
 dispatcher.add_handler(remconv_handler)
 
 updater.start_polling()
