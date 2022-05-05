@@ -3,3 +3,4 @@ plotto.png
 jdienstbuch.txt
 dbs/*
 !dbs/987654321_example.txt
+log.log

@@ -7,6 +7,7 @@ import math
 import matplotlib.pyplot as plt
 from operator import itemgetter
 from os.path import exists
+from os import popen
 
 config = SafeConfigParser()
 config.read("ident.ini")
@@ -14,7 +15,10 @@ config.read("ident.ini")
 updater = Updater(token=config.get("API","token"), use_context=True)
 dispatcher = updater.dispatcher
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(message)s',
+                    level=logging.INFO,
+                    handlers=[logging.FileHandler("log.log"),
+                              logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
 DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER =range(9)
@@ -395,7 +399,20 @@ def raus(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text="Error!")
     return ConversationHandler.END
-
+    
+def logs(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    if user.id == int(config.get("special_users","admin")):
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text="`" + popen("tail -n 20 log.log").read() + "`",
+                                 parse_mode=ParseMode.MARKDOWN_V2)
+        
+def show_users(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    if user.id == int(config.get("special_users","admin")):
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text="`" + popen("ls -lh dbs/").read() + "`",
+                                 parse_mode=ParseMode.MARKDOWN_V2)
 
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
@@ -439,6 +456,11 @@ dispatcher.add_handler(raw_handler)
 #remove_handler = CommandHandler('remove', remove)
 #dispatcher.add_handler(conv_handler)
 dispatcher.add_handler(remconv_handler)
+
+logs_handler = CommandHandler('logs', logs)
+dispatcher.add_handler(logs_handler)
+show_users_handler = CommandHandler('show_users', show_users)
+dispatcher.add_handler(show_users_handler)
 
 updater.start_polling()
 updater.idle()
