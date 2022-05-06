@@ -299,17 +299,20 @@ def stats(update: Update, context: CallbackContext):
         
         # weekly averages
         weeklyavg = {}
-        for week in set(line[4] for line in ndata):
+        weeks = set(line[4] for line in ndata)
+        for week in weeks:
             days = [i for i in ndata if i[4] == week]
-            if week == date.today().isocalendar()[1]:
+            # für aktuelle und erste woche nicht alle tage rechnen
+            if week == date.today().isocalendar()[1]: 
                 numdays = len(days)
+            elif week == min(weeks):
+                numdays = 5 - days[0][0].weekday()
             else:
                 numdays = 5
             avg = sum(i[5] for i in days) / numdays
             datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
             datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
             weeklyavg[week] = [[datemin, datemax], [avg, avg]]
-        
             
         # plt.style.use("ggplot")
         # fig,ax = plt.subplots()
