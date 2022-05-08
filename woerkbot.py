@@ -6,8 +6,7 @@ import logging
 import math
 import matplotlib.pyplot as plt
 from operator import itemgetter
-from os.path import exists
-from os import popen
+import os
 
 config = SafeConfigParser()
 config.read("ident.ini")
@@ -21,14 +20,14 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
                               logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
-DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER =range(9)
+DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER, LOESCH_MICH, LOESCHER =range(11)
 funfacts = {}
 
 def log(user, text):
     logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
 
 def db_ok(uid):
-    if exists("dbs/" + str(uid) + ".txt"):
+    if os.path.exists("dbs/" + str(uid) + ".txt"):
         with open("dbs/" + str(uid) + ".txt", "r") as f:
             f.readline()
             if f.readline() != "":
@@ -67,7 +66,7 @@ def start(update: Update, context: CallbackContext):
 def newuser(update: Update, context: CallbackContext):
     user = update.message.from_user
     hours = int(update.message.text)
-    if exists("dbs/" + str(user.id) + ".txt"):
+    if os.path.exists("dbs/" + str(user.id) + ".txt"):
         with open("dbs/" + str(user.id) + ".txt", "r") as f:
             lines = f.readlines()
         with open("dbs/" + str(user.id) + ".txt", "w") as f:
@@ -87,7 +86,7 @@ def newuser(update: Update, context: CallbackContext):
 
 def neuearbeit(update: Update, context: CallbackContext):
     user = update.message.from_user
-    if exists("dbs/" + str(user.id) + ".txt"):
+    if os.path.exists("dbs/" + str(user.id) + ".txt"):
         funfacts[user.id] = {}
         reply_keyboard = [['Heute'],
                           ['Gestern', 'Vorgestern']]
@@ -378,7 +377,7 @@ def remove(update: Update, context: CallbackContext):
     else:
         log(user, "Error! Eintrag konnte nicht entfernt werden, Datei existiert nicht.")
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
+                                 text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
         return ConversationHandler.END
     
 def raus(update: Update, context: CallbackContext):
@@ -403,18 +402,41 @@ def raus(update: Update, context: CallbackContext):
                                  text="Error!")
     return ConversationHandler.END
     
+def loesch_mich(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    if db_ok(user.id):
+        log(user, "Dienstbuch löschen!")
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text="Sollen *alle* deine Einträge gelöscht werden?\n" +
+                                 "Bitte bestätige indem du _Tschau_ schreibst oder breche die Operation mit \\cancel ab\.",
+                                 parse_mode=ParseMode.MARKDOWN_V2)
+        return LOESCHER
+    else:
+        log(user, "Error! Dienstbuch konnte nicht gelöscht werden, Datei existiert nicht.")
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text="Error! Dein Dienstbuch existiert nicht.")
+        return ConversationHandler.END
+
+def loescher(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    os.remove("dbs/" + str(user.id) + ".txt")
+    log(user, "Dienstbuch gelöscht!")
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text="Okay. Machs gut!")
+    return ConversationHandler.END
+
 def logs(update: Update, context: CallbackContext):
     user = update.message.from_user
     if user.id == int(config.get("special_users","admin")):
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="`" + popen("tail -n 20 log.log").read() + "`",
+                                 text="`" + os.popen("tail -n 20 log.log").read() + "`",
                                  parse_mode=ParseMode.MARKDOWN_V2)
         
 def show_users(update: Update, context: CallbackContext):
     user = update.message.from_user
     if user.id == int(config.get("special_users","admin")):
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="`" + popen("ls -lh dbs/").read() + "`",
+                                 text="`" + os.popen("ls -lh dbs/").read() + "`",
                                  parse_mode=ParseMode.MARKDOWN_V2)
 
 conv_handler = ConversationHandler(
@@ -443,10 +465,18 @@ start_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
+loesch_mich_handler = ConversationHandler(
+    entry_points=[CommandHandler('loesch_mich',loesch_mich)],
+    states={
+        LOESCHER: [MessageHandler(Filters.regex('^Tschau$'), loescher)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
 
 #start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 dispatcher.add_handler(conv_handler)
+dispatcher.add_handler(loesch_mich_handler)
 
 #neuearbeit_handler = CommandHandler('a', neuearbeit)
 #dispatcher.add_handler(neuearbeit_handler)
