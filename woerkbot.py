@@ -67,6 +67,11 @@ def strikedays(bitdays):
             outstring += "~" + day[1] + "~, "
     return outstring[:-2]
 
+def is_workday(daydate, workdays): # bit shift by weekday and bitwise comparison
+    if workdays & 1 << 6 - daydate.weekday():
+        return True
+    else:
+        return False
 
 def start(update: Update, context: CallbackContext):
     outstring = ("Hallo!\n"
@@ -282,7 +287,8 @@ def stats(update: Update, context: CallbackContext):
                 if i == 0:
                     h, d = line.rstrip("\n").split(";")
                     hourperweek = int(h)
-                    daysperweek = bin(int(d,2)).count("1")
+                    workdays = int(d,2)
+                    daysperweek = bin(workdays).count("1")
                     hourperday = hourperweek / daysperweek
                 else:
                     el = list(map(int, line.rstrip("\n").split(";")))
@@ -326,6 +332,12 @@ def stats(update: Update, context: CallbackContext):
                          "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
                          "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
         month = (month - 2)%12 + 1
+        month_last = date.today().replace(day=1) - timedelta(days=1)
+        month_list = [month_last - timedelta(days = x) for x in range(month_last.day)]
+        month_workdays = 0
+        for day in month_list:
+            if is_workday(day, workdays):
+                month_workdays += 1
         times = []
         for line in ndata:
             if line[2] == month:
@@ -334,16 +346,28 @@ def stats(update: Update, context: CallbackContext):
             outstring += "*__Letzten Monat:__*\n"
             outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
                          "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
-                         "Soll: " + nicetime(hourperday * len(times)) + "\n" +
+                         "Soll: " + nicetime(hourperday * month_workdays) + "\n" +
                          "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
+      
+        day1 = ndata[0][0]
+        dayrange = date.today() - day1
+        datelist = [day1 + timedelta(days = x) for x in range(dayrange.days + 1)]
+        alltime_workdays = 0
+        for day in datelist:
+            if is_workday(day, workdays):
+                alltime_workdays += 1
+        
+        if date.today() not in [a[0] for a in ndata]: # dont count today if there isnt an entry already
+            alltime_workdays -= 1
         
         times = [row[5] for row in ndata]
-        ueber_unter = hourperday * len(times) - sum(times)
         outstring += "*__Insgesamt:__*\n"
         outstring += ("Anzahl an Einträgen: " + str(len(ndata)) + "\n" +
                      "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
-                     "Soll: " + nicetime(hourperday * len(times)) + "\n" +
+                     "Soll: " + nicetime(hourperday * alltime_workdays) + "\n" +
                      "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n")
+        
+        ueber_unter = hourperday * alltime_workdays - sum(times)
         if ueber_unter == 0:
             outstring += "\n"
         elif ueber_unter > 0:
@@ -352,15 +376,14 @@ def stats(update: Update, context: CallbackContext):
             outstring += "Du bist " + nicetime(-ueber_unter) + " im Plus.\n\n"
         
         outstring = outstring.replace(".", "\.")
-        
-        day1 = ndata[0][0]
-        dayrange = date.today() - day1
-        datelist = [day1 + timedelta(days = x) for x in range(dayrange.days + 1)]
+
         timelist = [0] * (dayrange.days+1)
         for i, dat in enumerate(datelist):
+            if is_workday(dat, workdays): # show zeros
+                timelist[i] = 0.1
             for line in ndata:
                 if line[0] == dat:
-                    timelist[i] = max(line[5], 0.1) # show zeros
+                    timelist[i] = line[5] 
         
         # weekly averages
         weeklyavg = {}
@@ -370,8 +393,18 @@ def stats(update: Update, context: CallbackContext):
             # für aktuelle und erste woche nicht alle tage rechnen
             if week == date.today().isocalendar()[1]: 
                 numdays = len(days)
+                numdays = 0
+                for day in [date.today()-timedelta(days = x) for x in range(date.today().weekday()+1)]:
+                    if is_workday(day, workdays):
+                        numdays += 1
+                if date.today() not in [a[0] for a in ndata]: # dont count today if there isnt an entry already
+                    numdays -= 1
             elif week == min(weeks):
-                numdays = daysperweek - days[0][0].weekday()
+                numdays = 0
+                daysleft = 6 - days[0][0].weekday()
+                for day in [days[0][0]+timedelta(days = x) for x in range(daysleft+1)]:
+                    if is_workday(day, workdays):
+                        numdays += 1
             else:
                 numdays = daysperweek
             avg = sum(i[5] for i in days) / numdays
