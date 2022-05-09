@@ -410,8 +410,15 @@ def stats(update: Update, context: CallbackContext):
             else:
                 numdays = daysperweek
             avg = sum(i[5] for i in days) / numdays
-            datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
-            datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
+            # find first and last day of week
+            dayX = min(i[0] for i in days)
+            day1 = dayX - timedelta(days = dayX.weekday())
+            day7 = day1 + timedelta(days = 6)
+            # fix for first and last
+            if day1 < ndata[0][0]: day1 = ndata[0][0]
+            if day7 > ndata[-1][0]: day7 = ndata[-1][0]
+            datemin = datetime.combine(day1, time.min) - timedelta(hours = 12)
+            datemax = datetime.combine(day7, time.min) + timedelta(hours = 12)
             weeklyavg[week] = [[datemin, datemax], [avg, avg]]
         
         plt.style.use("ggplot")
