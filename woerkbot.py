@@ -334,6 +334,8 @@ def stats(update: Update, context: CallbackContext):
         month = (month - 2)%12 + 1
         month_last = date.today().replace(day=1) - timedelta(days=1)
         month_list = [month_last - timedelta(days = x) for x in range(month_last.day)]
+        if ndata[0][0] in month_list: # wenn monat unvollständig
+            month_list = month_list[:month_list.index(ndata[0][0])+1] # kürzen aller früheren tage (hinten in liste)
         month_workdays = 0
         for day in month_list:
             if is_workday(day, workdays):
