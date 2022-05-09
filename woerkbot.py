@@ -20,8 +20,9 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
                               logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
-DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER, LOESCH_MICH, LOESCHER =range(11)
+DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSERHOURS, NEWUSERDAYS, LOESCH_MICH, LOESCHER =range(12)
 funfacts = {}
+hours_n_days = {}
 
 def log(user, text):
     logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
@@ -54,34 +55,53 @@ def start(update: Update, context: CallbackContext):
                  "Bitte verlasse dich nicht darauf, dass alles immer korrekt "
                  "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
                  "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
-                 "Der Bot geht aktuell davon aus, dass sich deine Arbeitszeit im "
-                 "Normalfall auf 5 Tage verteilt. Zur akkuraten Berechnung von Überstunden "
-                 "benötigt er deine wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
+                 "Zur akkuraten Berechnung von Überstunden benötigt der Bot die Anzahl "
+                 "deiner wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
 #    outstring = outstring.replace(".", "\.")
     context.bot.send_message(chat_id=update.effective_chat.id, text=outstring)
     user = update.message.from_user
     log(user, "Neue Anmeldung!")
-    return NEWUSER
+    return NEWUSERHOURS
 
-def newuser(update: Update, context: CallbackContext):
+def newuserhours(update: Update, context: CallbackContext):
     user = update.message.from_user
     hours = int(update.message.text)
+    hours_n_days[user.id] = [hours,0]
+    outstring= (str(hours) + " Stunden sollen es sein. Bitte gib nun die "
+                "Anzahl an wöchentlichen Arbeitstagen ein.")
+    reply_keyboard = [["1","2", "3"],
+                      ["4","5"],
+                      ["6","7"]]
+    update.message.reply_text(outstring,
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard,
+                                                               one_time_keyboard=True))
+    return NEWUSERDAYS
+
+def newuserdays(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    days = int(update.message.text)
+    hours_n_days[user.id][1] = days
     if os.path.exists("dbs/" + str(user.id) + ".txt"):
         with open("dbs/" + str(user.id) + ".txt", "r") as f:
             lines = f.readlines()
         with open("dbs/" + str(user.id) + ".txt", "w") as f:
-            f.write(str(hours) + "\n")
+            f.write(str(hours_n_days[user.id][0]) + ";" + str(hours_n_days[user.id][1]) + "\n")
             for i, line in enumerate(lines):
                 if i > 0:
                     f.write(line)
-        log(user, "Gibbet schon, nun mit " + str(hours) + " Stunden.")
-        update.message.reply_text("User war bereits angelegt, Wochenstundenzahl wurde mit " + 
-                                  str(hours) + " h überschrieben.")
+        log(user, "Gibbet schon, nun mit " + str(hours_n_days[user.id][0]) + " Stunden und " + 
+            str(hours_n_days[user.id][1]) + " Tagen.")
+        update.message.reply_text("User war bereits angelegt, wurde mit " + 
+                                  str(hours_n_days[user.id][0]) + " Stunden bei " + 
+                                  str(hours_n_days[user.id][1]) + " Tagen überschrieben.")
     else:
         with open("dbs/" + str(user.id) + ".txt", "a+") as f:
-            f.write(str(hours) + "\n")
-            log(user, "User mit " + str(hours) + " Wochenstunden angelegt.")
-            update.message.reply_text(str(hours) + " Stunden sollen es sein. Bitte lege nun mit /a deinen ersten Eintrag an.")
+            f.write(str(hours_n_days[user.id][0]) + ";" + str(hours_n_days[user.id][1]) + "\n")
+            log(user, "User mit " + str(hours_n_days[user.id][0]) + " Wochenstunden an " +
+                str(hours_n_days[user.id][1]) + " Tagen angelegt.")
+            update.message.reply_text(str(hours_n_days[user.id][0]) + " Stunden an " + 
+                                      str(hours_n_days[user.id][1]) + " Tagen sollen es sein. " +
+                                      "Bitte lege nun mit /a deinen ersten Eintrag an.")
     return ConversationHandler.END
 
 def neuearbeit(update: Update, context: CallbackContext):
@@ -216,8 +236,8 @@ def stats(update: Update, context: CallbackContext):
             ndata = []
             for i, line in enumerate(f):
                 if i == 0:
-                    hourperweek = int(line.rstrip("\n"))
-                    hourperday = hourperweek / 5
+                    hourperweek, daysperweek = list(map(int,line.rstrip("\n").split(";")))
+                    hourperday = hourperweek / daysperweek
                 else:
                     el = list(map(int, line.rstrip("\n").split(";")))
                     tag = date(*el[0:3])
@@ -305,9 +325,9 @@ def stats(update: Update, context: CallbackContext):
             if week == date.today().isocalendar()[1]: 
                 numdays = len(days)
             elif week == min(weeks):
-                numdays = 5 - days[0][0].weekday()
+                numdays = daysperweek - days[0][0].weekday()
             else:
-                numdays = 5
+                numdays = daysperweek
             avg = sum(i[5] for i in days) / numdays
             datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
             datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
@@ -445,10 +465,13 @@ def psa(update: Update, context: CallbackContext):
         ids = [int(a.replace(".txt","")) for a in os.listdir("dbs") if "example" not in a]
         psa_message = update.message.text.replace("/psa ", "")
         for userid in ids:
-            context.bot.send_message(chat_id=userid,
-                                     text=psa_message,
-                                     parse_mode=ParseMode.MARKDOWN_V2)
-            log(user, "PSA sent to " + str(userid) + ".")
+            try:
+                context.bot.send_message(chat_id=userid,
+                                         text=psa_message,
+                                         parse_mode=ParseMode.MARKDOWN_V2)
+                log(user, "PSA sent to " + str(userid) + ".")
+            except:
+                log(user, "PSA Error! Bot may be blocked by " + str(userid) + ".")
 
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
@@ -472,7 +495,8 @@ remconv_handler = ConversationHandler(
 start_handler = ConversationHandler(
     entry_points=[CommandHandler('start',start)],
     states={
-        NEWUSER: [MessageHandler(Filters.regex('^[0-9]+$'), newuser)],
+        NEWUSERHOURS: [MessageHandler(Filters.regex('^[0-9]+$'), newuserhours)],
+        NEWUSERDAYS: [MessageHandler(Filters.regex('^[1-7]$'), newuserdays)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
