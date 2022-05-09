@@ -419,14 +419,23 @@ def stats(update: Update, context: CallbackContext):
             if day7 > ndata[-1][0]: day7 = ndata[-1][0]
             datemin = datetime.combine(day1, time.min) - timedelta(hours = 12)
             datemax = datetime.combine(day7, time.min) + timedelta(hours = 12)
-            weeklyavg[week] = [[datemin, datemax], [avg, avg]]
+            weeklyavg[week] = [[[datemin, datemax], [avg, avg]], numdays]
+            totalOT = [[],[]]
+            run_tot = 6
+            for key in sorted(weeklyavg.keys()):
+                totalOT[0].extend(weeklyavg[key][0][0])
+                run_tot += (weeklyavg[key][0][1][0] - hourperday) * weeklyavg[key][1] / daysperweek
+                totalOT[1].extend([run_tot,run_tot])
+            totalOT[1][0] = weeklyavg[min(weeklyavg.keys())][0][1][0]# ~~aesthetics~~
+            totalOT[1][1] = weeklyavg[min(weeklyavg.keys())][0][1][0]
         
         plt.style.use("ggplot")
         fig,ax = plt.subplots()
         fig.set_size_inches(11, 5, forward=True)
         ax.bar(datelist,timelist, color="#2a9c48")
+        ax.plot(*totalOT, color='#b24720', linestyle=":")
         for week in weeklyavg:
-            ax.plot(*weeklyavg[week], color='#124720', linestyle='dotted')
+            ax.plot(*weeklyavg[week][0], color='#124720', linestyle='--')
         ax.autoscale(enable=True, axis='x', tight=True)
         ax.set_yticks(range(math.ceil(max(timelist))))
         ax.set_xticks(datelist)
