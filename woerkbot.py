@@ -1,5 +1,5 @@
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, ParseMode
-from telegram.ext import Updater, CallbackContext, CommandHandler, ConversationHandler, MessageHandler, Filters
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, ParseMode, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CallbackContext, CommandHandler, ConversationHandler, MessageHandler, Filters, CallbackQueryHandler
 from configparser import SafeConfigParser
 from datetime import datetime, date, timedelta, time
 import logging
@@ -7,6 +7,8 @@ import math
 import matplotlib.pyplot as plt
 from operator import itemgetter
 import os
+import warnings # this warning is apparently normal..
+warnings.filterwarnings("ignore", message="If 'per_message=False', 'CallbackQueryHandler' will not be tracked for every message.")
 
 config = SafeConfigParser()
 config.read("ident.ini")
@@ -20,8 +22,9 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
                               logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
-DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSER, LOESCH_MICH, LOESCHER =range(11)
+DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSERHOURS, NEWUSERDAYS, LOESCH_MICH, LOESCHER, INLINETEST =range(13)
 funfacts = {}
+hours_n_days = {}
 
 def log(user, text):
     logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
@@ -48,41 +51,107 @@ def nicetime(hours):
     else:
         return "%d h" % hour
 
+def strikedays(bitdays):
+    outstring = ""
+    days = [[0b1000000, "Mo"],
+            [0b0100000, "Di"],
+            [0b0010000, "Mi"],
+            [0b0001000, "Do"],
+            [0b0000100, "Fr"],
+            [0b0000010, "Sa"],
+            [0b0000001, "So"]]
+    for day in days:
+        if bitdays & day[0]:
+            outstring += "*" + day[1] + "*, "
+        else:
+            outstring += "~" + day[1] + "~, "
+    return outstring[:-2]
+
+def is_workday(daydate, workdays): # bit shift by weekday and bitwise comparison
+    if workdays & 1 << 6 - daydate.weekday():
+        return True
+    else:
+        return False
+
 def start(update: Update, context: CallbackContext):
     outstring = ("Hallo!\n"
                  "Dieser Bot ist ein Hobbyprojekt und aktiv in Entwicklung. "
                  "Bitte verlasse dich nicht darauf, dass alles immer korrekt "
                  "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
                  "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
-                 "Der Bot geht aktuell davon aus, dass sich deine Arbeitszeit im "
-                 "Normalfall auf 5 Tage verteilt. Zur akkuraten Berechnung von Überstunden "
-                 "benötigt er deine wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
+                 "Zur akkuraten Berechnung von Überstunden benötigt der Bot die Anzahl "
+                 "deiner wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
 #    outstring = outstring.replace(".", "\.")
     context.bot.send_message(chat_id=update.effective_chat.id, text=outstring)
     user = update.message.from_user
     log(user, "Neue Anmeldung!")
-    return NEWUSER
+    return NEWUSERHOURS
 
-def newuser(update: Update, context: CallbackContext):
+def newuserhours(update: Update, context: CallbackContext):
     user = update.message.from_user
     hours = int(update.message.text)
-    if os.path.exists("dbs/" + str(user.id) + ".txt"):
-        with open("dbs/" + str(user.id) + ".txt", "r") as f:
-            lines = f.readlines()
-        with open("dbs/" + str(user.id) + ".txt", "w") as f:
-            f.write(str(hours) + "\n")
-            for i, line in enumerate(lines):
-                if i > 0:
-                    f.write(line)
-        log(user, "Gibbet schon, nun mit " + str(hours) + " Stunden.")
-        update.message.reply_text("User war bereits angelegt, Wochenstundenzahl wurde mit " + 
-                                  str(hours) + " h überschrieben.")
+    hours_n_days[user.id] = [hours,0b0000000]
+    outstring= (str(hours) + " Stunden sollen es sein.")
+    update.message.reply_text(outstring)
+    
+    keyboard = [[InlineKeyboardButton("Mo", callback_data=64),
+                 InlineKeyboardButton("Di", callback_data=32),
+                 InlineKeyboardButton("Mi", callback_data=16),
+                 InlineKeyboardButton("Do", callback_data=8),
+                 InlineKeyboardButton("Fr", callback_data=4),
+                 InlineKeyboardButton("Sa", callback_data=2),
+                 InlineKeyboardButton("So", callback_data=1)],
+                 [InlineKeyboardButton("Fertig", callback_data="fertig")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.send_message(chat_id=update.effective_chat.id, 
+                             text="An welchen Tagen arbeitest du?\nAusgewählt: " + strikedays(hours_n_days[user.id][1]),
+                             reply_markup=reply_markup,
+                             parse_mode=ParseMode.MARKDOWN_V2)
+    return NEWUSERDAYS
+
+def newuserdays(update: Update, context: CallbackContext):
+    query = update.callback_query
+    user = query.from_user
+    query.answer()
+    keyboard = [[InlineKeyboardButton("Mo", callback_data=64),
+                 InlineKeyboardButton("Di", callback_data=32),
+                 InlineKeyboardButton("Mi", callback_data=16),
+                 InlineKeyboardButton("Do", callback_data=8),
+                 InlineKeyboardButton("Fr", callback_data=4),
+                 InlineKeyboardButton("Sa", callback_data=2),
+                 InlineKeyboardButton("So", callback_data=1)],
+                 [InlineKeyboardButton("Fertig", callback_data="fertig")]]
+    if query.data != "fertig":
+        hours_n_days[user.id][1] = hours_n_days[user.id][1] ^ int(query.data)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text="An welchen Tagen arbeitest du?\nAusgewählt: " + strikedays(hours_n_days[user.id][1]),
+                                reply_markup=reply_markup,
+                                parse_mode=ParseMode.MARKDOWN_V2)
     else:
-        with open("dbs/" + str(user.id) + ".txt", "a+") as f:
-            f.write(str(hours) + "\n")
-            log(user, "User mit " + str(hours) + " Wochenstunden angelegt.")
-            update.message.reply_text(str(hours) + " Stunden sollen es sein. Bitte lege nun mit /a deinen ersten Eintrag an.")
-    return ConversationHandler.END
+        if os.path.exists("dbs/" + str(user.id) + ".txt"):
+            with open("dbs/" + str(user.id) + ".txt", "r") as f:
+                lines = f.readlines()
+            with open("dbs/" + str(user.id) + ".txt", "w") as f:
+                f.write(str(hours_n_days[user.id][0]) + ";" + "{:07b}".format(hours_n_days[user.id][1]) + "\n")
+                for i, line in enumerate(lines):
+                    if i > 0:
+                        f.write(line)
+            log(user, "Gibbet schon, nun mit " + str(hours_n_days[user.id][0]) + " Stunden und " + 
+                "{:07b}".format(hours_n_days[user.id][1]) + " Tagen.")
+            query.edit_message_text(text="An welchen Tagen arbeitest du?\nAusgewählt: " + strikedays(hours_n_days[user.id][1]) + 
+                                    "\nAuswahl beendet\. Der User war bereits angelegt\. Seine Einstellungen wurden aktualisiert\.",
+                                    parse_mode=ParseMode.MARKDOWN_V2)
+        else:
+            with open("dbs/" + str(user.id) + ".txt", "a+") as f:
+                f.write(str(hours_n_days[user.id][0]) + ";" + "{:07b}".format(hours_n_days[user.id][1]) + "\n")
+            log(user, "User angelegt mit " + str(hours_n_days[user.id][0]) + " Stunden und " + 
+                "{:07b}".format(hours_n_days[user.id][1]) + " Tagen.")        
+            query.edit_message_text(text="An welchen Tagen arbeitest du?\nAusgewählt: " + strikedays(hours_n_days[user.id][1]) + 
+                                    "\nAuswahl beendet\. Der Bot ist nun einsatzbereit\.\n" + 
+                                    "Bitte lege nun mit \/a deinen ersten Eintrag an\.",
+                                    parse_mode=ParseMode.MARKDOWN_V2)
+        return ConversationHandler.END
+        
 
 def neuearbeit(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -216,8 +285,11 @@ def stats(update: Update, context: CallbackContext):
             ndata = []
             for i, line in enumerate(f):
                 if i == 0:
-                    hourperweek = int(line.rstrip("\n"))
-                    hourperday = hourperweek / 5
+                    h, d = line.rstrip("\n").split(";")
+                    hourperweek = int(h)
+                    workdays = int(d,2)
+                    daysperweek = bin(workdays).count("1")
+                    hourperday = hourperweek / daysperweek
                 else:
                     el = list(map(int, line.rstrip("\n").split(";")))
                     tag = date(*el[0:3])
@@ -260,6 +332,14 @@ def stats(update: Update, context: CallbackContext):
                          "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
                          "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
         month = (month - 2)%12 + 1
+        month_last = date.today().replace(day=1) - timedelta(days=1)
+        month_list = [month_last - timedelta(days = x) for x in range(month_last.day)]
+        if ndata[0][0] in month_list: # wenn monat unvollständig
+            month_list = month_list[:month_list.index(ndata[0][0])+1] # kürzen aller früheren tage (hinten in liste)
+        month_workdays = 0
+        for day in month_list:
+            if is_workday(day, workdays):
+                month_workdays += 1
         times = []
         for line in ndata:
             if line[2] == month:
@@ -268,16 +348,28 @@ def stats(update: Update, context: CallbackContext):
             outstring += "*__Letzten Monat:__*\n"
             outstring += ("Tage gearbeitet: " + str(len(times)) + "\n" +
                          "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
-                         "Soll: " + nicetime(hourperday * len(times)) + "\n" +
+                         "Soll: " + nicetime(hourperday * month_workdays) + "\n" +
                          "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n\n")
+      
+        day1 = ndata[0][0]
+        dayrange = date.today() - day1
+        datelist = [day1 + timedelta(days = x) for x in range(dayrange.days + 1)]
+        alltime_workdays = 0
+        for day in datelist:
+            if is_workday(day, workdays):
+                alltime_workdays += 1
+        
+        if date.today() not in [a[0] for a in ndata]: # dont count today if there isnt an entry already
+            alltime_workdays -= 1
         
         times = [row[5] for row in ndata]
-        ueber_unter = hourperday * len(times) - sum(times)
         outstring += "*__Insgesamt:__*\n"
         outstring += ("Anzahl an Einträgen: " + str(len(ndata)) + "\n" +
                      "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
-                     "Soll: " + nicetime(hourperday * len(times)) + "\n" +
+                     "Soll: " + nicetime(hourperday * alltime_workdays) + "\n" +
                      "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n")
+        
+        ueber_unter = hourperday * alltime_workdays - sum(times)
         if ueber_unter == 0:
             outstring += "\n"
         elif ueber_unter > 0:
@@ -286,15 +378,14 @@ def stats(update: Update, context: CallbackContext):
             outstring += "Du bist " + nicetime(-ueber_unter) + " im Plus.\n\n"
         
         outstring = outstring.replace(".", "\.")
-        
-        day1 = ndata[0][0]
-        dayrange = date.today() - day1
-        datelist = [day1 + timedelta(days = x) for x in range(dayrange.days + 1)]
+
         timelist = [0] * (dayrange.days+1)
         for i, dat in enumerate(datelist):
+            if is_workday(dat, workdays): # show zeros
+                timelist[i] = 0.1
             for line in ndata:
                 if line[0] == dat:
-                    timelist[i] = max(line[5], 0.1) # show zeros
+                    timelist[i] = line[5] 
         
         # weekly averages
         weeklyavg = {}
@@ -304,29 +395,52 @@ def stats(update: Update, context: CallbackContext):
             # für aktuelle und erste woche nicht alle tage rechnen
             if week == date.today().isocalendar()[1]: 
                 numdays = len(days)
+                numdays = 0
+                for day in [date.today()-timedelta(days = x) for x in range(date.today().weekday()+1)]:
+                    if is_workday(day, workdays):
+                        numdays += 1
+                if date.today() not in [a[0] for a in ndata]: # dont count today if there isnt an entry already
+                    numdays -= 1
             elif week == min(weeks):
-                numdays = 5 - days[0][0].weekday()
+                numdays = 0
+                daysleft = 6 - days[0][0].weekday()
+                for day in [days[0][0]+timedelta(days = x) for x in range(daysleft+1)]:
+                    if is_workday(day, workdays):
+                        numdays += 1
             else:
-                numdays = 5
+                numdays = daysperweek
             avg = sum(i[5] for i in days) / numdays
-            datemin = datetime.combine(min(i[0] for i in days), time.min) - timedelta(hours = 12)
-            datemax = datetime.combine(max(i[0] for i in days), time.min) + timedelta(hours = 12)
-            weeklyavg[week] = [[datemin, datemax], [avg, avg]]
+            # find first and last day of week
+            dayX = min(i[0] for i in days)
+            day1 = dayX - timedelta(days = dayX.weekday())
+            day7 = day1 + timedelta(days = 6)
+            # fix for first and last
+            if day1 < ndata[0][0]: day1 = ndata[0][0]
+            if day7 > ndata[-1][0]: day7 = ndata[-1][0]
+            datemin = datetime.combine(day1, time.min) - timedelta(hours = 12)
+            datemax = datetime.combine(day7, time.min) + timedelta(hours = 12)
+            weeklyavg[week] = [[[datemin, datemax], [avg, avg]], numdays]
+            totalOT = [[],[]]
+            run_tot = 6
+            for key in sorted(weeklyavg.keys()):
+                totalOT[0].extend(weeklyavg[key][0][0])
+                run_tot += (weeklyavg[key][0][1][0] - hourperday) * weeklyavg[key][1] / daysperweek
+                totalOT[1].extend([run_tot,run_tot])
+            totalOT[1][0] = weeklyavg[min(weeklyavg.keys())][0][1][0]# ~~aesthetics~~
+            totalOT[1][1] = weeklyavg[min(weeklyavg.keys())][0][1][0]
             
-        # plt.style.use("ggplot")
-        # fig,ax = plt.subplots()
-        # ax.barh(datelist,timelist, color="#2a9c48")
-        # ax.set_yticks(datelist)
-        # ax.set_xticks(range(math.ceil(max(timelist))))
-        # ax.invert_yaxis()
-        # ax.axvline(x = 6, color='k', linestyle='--')
+            totaltest = [[],[]] # wonky redo to make weeklyOT are bit more palatable
+            for i in range(0, len(totalOT[0]), 2):
+                totaltest[0].append(totalOT[0][i] + (totalOT[0][i+1]-totalOT[0][i])/2)
+                totaltest[1].append(totalOT[1][i])
         
         plt.style.use("ggplot")
         fig,ax = plt.subplots()
         fig.set_size_inches(11, 5, forward=True)
         ax.bar(datelist,timelist, color="#2a9c48")
+        ax.plot(*totaltest, color='#b24720', linestyle="-", linewidth = 3, alpha = .15, solid_capstyle='round')
         for week in weeklyavg:
-            ax.plot(*weeklyavg[week], color='#124720', linestyle='dotted')
+            ax.plot(*weeklyavg[week][0], color='#124720', linestyle=':')
         ax.autoscale(enable=True, axis='x', tight=True)
         ax.set_yticks(range(math.ceil(max(timelist))))
         ax.set_xticks(datelist)
@@ -438,6 +552,62 @@ def show_users(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text="`" + os.popen("ls -lh dbs/").read() + "`",
                                  parse_mode=ParseMode.MARKDOWN_V2)
+   
+def psa(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    if user.id == int(config.get("special_users","admin")):
+        ids = [int(a.replace(".txt","")) for a in os.listdir("dbs") if "example" not in a]
+        psa_message = update.message.text.replace("/psa ", "")
+        for userid in ids:
+            try:
+                context.bot.send_message(chat_id=userid,
+                                         text=psa_message,
+                                         parse_mode=ParseMode.MARKDOWN_V2)
+                log(user, "PSA sent to " + str(userid) + ".")
+            except:
+                log(user, "PSA Error! Bot may be blocked by " + str(userid) + ".")
+                
+def inlinetest(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    hours_n_days[user.id] = [0,0b0000000]
+    if user.id == int(config.get("special_users","admin")):
+        keyboard = [[InlineKeyboardButton("Mo", callback_data=64),
+                     InlineKeyboardButton("Di", callback_data=32),
+                     InlineKeyboardButton("Mi", callback_data=16),
+                     InlineKeyboardButton("Do", callback_data=8),
+                     InlineKeyboardButton("Fr", callback_data=4),
+                     InlineKeyboardButton("Sa", callback_data=2),
+                     InlineKeyboardButton("So", callback_data=1)],
+                     [InlineKeyboardButton("Fertig", callback_data="fertig")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        context.bot.send_message(chat_id=update.effective_chat.id, 
+                                 text="Ausgewählt: " + strikedays(hours_n_days[user.id][1]),
+                                 reply_markup=reply_markup,
+                                 parse_mode=ParseMode.MARKDOWN_V2)
+        
+def button(update: Update, context: CallbackContext):
+    query = update.callback_query
+    user = query.from_user
+    query.answer()
+    keyboard = [[InlineKeyboardButton("Mo", callback_data=64),
+                 InlineKeyboardButton("Di", callback_data=32),
+                 InlineKeyboardButton("Mi", callback_data=16),
+                 InlineKeyboardButton("Do", callback_data=8),
+                 InlineKeyboardButton("Fr", callback_data=4),
+                 InlineKeyboardButton("Sa", callback_data=2),
+                 InlineKeyboardButton("So", callback_data=1)],
+                 [InlineKeyboardButton("Fertig", callback_data="fertig")]]
+    if query.data == "fertig":
+        query.edit_message_text(text="Ausgewählt: " + strikedays(hours_n_days[user.id][1]) + 
+                                "\nAuswahl beendet\. Der Bot ist nun einsatzbereit\.\n" + 
+                                "Bitte lege nun mit \/a deinen ersten Eintrag an\.",
+                                parse_mode=ParseMode.MARKDOWN_V2)
+    else:
+        hours_n_days[user.id][1] = hours_n_days[user.id][1] ^ int(query.data)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        query.edit_message_text(text="Ausgewählt: " + strikedays(hours_n_days[user.id][1]),
+                                reply_markup=reply_markup,
+                                parse_mode=ParseMode.MARKDOWN_V2)
 
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
@@ -451,6 +621,7 @@ conv_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
+
 remconv_handler = ConversationHandler(
     entry_points=[CommandHandler('remove',remove)],
     states={
@@ -458,13 +629,16 @@ remconv_handler = ConversationHandler(
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
+
 start_handler = ConversationHandler(
     entry_points=[CommandHandler('start',start)],
     states={
-        NEWUSER: [MessageHandler(Filters.regex('^[0-9]+$'), newuser)],
+        NEWUSERHOURS: [MessageHandler(Filters.regex('^[0-9]+$'), newuserhours)],
+        NEWUSERDAYS: [CallbackQueryHandler(newuserdays)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
 )
+
 loesch_mich_handler = ConversationHandler(
     entry_points=[CommandHandler('loesch_mich',loesch_mich)],
     states={
@@ -494,6 +668,8 @@ logs_handler = CommandHandler('logs', logs)
 dispatcher.add_handler(logs_handler)
 show_users_handler = CommandHandler('show_users', show_users)
 dispatcher.add_handler(show_users_handler)
+psa_handler = CommandHandler('psa', psa)
+dispatcher.add_handler(psa_handler)
 
 updater.start_polling()
 updater.idle()
