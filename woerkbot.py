@@ -428,14 +428,19 @@ def stats(update: Update, context: CallbackContext):
                 totalOT[1].extend([run_tot,run_tot])
             totalOT[1][0] = weeklyavg[min(weeklyavg.keys())][0][1][0]# ~~aesthetics~~
             totalOT[1][1] = weeklyavg[min(weeklyavg.keys())][0][1][0]
+            
+            totaltest = [[],[]] # wonky redo to make weeklyOT are bit more palatable
+            for i in range(0, len(totalOT[0]), 2):
+                totaltest[0].append(totalOT[0][i] + (totalOT[0][i+1]-totalOT[0][i])/2)
+                totaltest[1].append(totalOT[1][i])
         
         plt.style.use("ggplot")
         fig,ax = plt.subplots()
         fig.set_size_inches(11, 5, forward=True)
         ax.bar(datelist,timelist, color="#2a9c48")
-        ax.plot(*totalOT, color='#b24720', linestyle=":")
+        ax.plot(*totaltest, color='#b24720', linestyle="-", linewidth = 3, alpha = .15, solid_capstyle='round')
         for week in weeklyavg:
-            ax.plot(*weeklyavg[week][0], color='#124720', linestyle='--')
+            ax.plot(*weeklyavg[week][0], color='#124720', linestyle=':')
         ax.autoscale(enable=True, axis='x', tight=True)
         ax.set_yticks(range(math.ceil(max(timelist))))
         ax.set_xticks(datelist)
