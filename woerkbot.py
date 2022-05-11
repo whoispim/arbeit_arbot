@@ -615,15 +615,21 @@ def erinnerer(update: Update, context: CallbackContext):
     with open("reminders/" + str(user.id) + ".txt", "w") as f:
         f.write(str(reminders[user.id]["hour"]) + ";" + str(reminders[user.id]["minute"]))
     thetime = time(reminders[user.id]["hour"], reminders[user.id]["minute"], tzinfo = pytz.timezone("Europe/Berlin"))
-#    TODO set it up for the right workdays
-#    thedays = ()
-#    with open("dbs/" + str(user.id) + ".txt") as f:
-#        workdays = int(f.readline().rstrip("\n").split(";")[1], 2)
-    active_reminders[user.id] = j.run_daily(die_erinnerung, context = (user.id), time = thetime)
+
+    thedays = ()
+    with open("dbs/" + str(user.id) + ".txt") as f:
+        workdays = int(f.readline().rstrip("\n").split(";")[1], 2)
+    for i in range(7):
+        if 64 >> i & workdays:
+            thedays = thedays + (i,)
+    
+    active_reminders[user.id] = j.run_daily(die_erinnerung, context = (user.id),
+                                            time = thetime, days = thedays)
     update.message.reply_text("Arbeitstägliche Erinnerung für " + 
                               str(reminders[user.id]["hour"]) + ":" + str(reminders[user.id]["minute"]) + 
                               " angelegt.")
-    log(user, "Erinnerung eingerichtet.")
+    log(user, "Erinnerung eingerichtet (" + str(reminders[user.id]["hour"]) + ":" +
+              str(reminders[user.id]["minute"]) + ", " + "{:07b}".format(workdays) + ").")
     return ConversationHandler.END
 
 def erinner_mich_nicht(update: Update, context: CallbackContext):
@@ -650,9 +656,14 @@ def die_erinnerung(context: CallbackContext):
     if erledigt:
         context.bot.send_message(chat_id=81558994, 
                                  text = "Tip top, hast ja schon nen Eintrag")
+        logger.info("User " + str(id) + " musste nicht erinnert werden.")
     else:
-        context.bot.send_message(chat_id=81558994, 
-                                 text = "Machste nochwas?")
+        try:
+            context.bot.send_message(chat_id=81558994, 
+                                     text = "Machste nochwas?")
+            logger.info("User " + str(id) + " wurde erinnert.")
+        except:
+            logger.info("Erinnerung an User " + str(id) + " konnte nicht zugestellt werden.")
 
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
