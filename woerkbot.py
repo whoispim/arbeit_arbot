@@ -665,6 +665,24 @@ def die_erinnerung(context: CallbackContext):
         except:
             logger.info("Erinnerung an User " + str(id) + " konnte nicht zugestellt werden.")
 
+def requeue_reminders():
+    ids = [int(a.replace(".txt","")) for a in os.listdir("reminders") if "example" not in a]
+    for userid in ids:
+        with open("reminders/" + str(userid) + ".txt", "r") as f:
+            hour, minu = list(map(int, f.readline().split(";")))
+        thetime = time(hour, minu, tzinfo = pytz.timezone("Europe/Berlin"))
+        thedays = ()
+        with open("dbs/" + str(userid) + ".txt") as f:
+            workdays = int(f.readline().rstrip("\n").split(";")[1], 2)
+        for i in range(7):
+            if 64 >> i & workdays:
+                thedays = thedays + (i,)
+        
+        active_reminders[userid] = j.run_daily(die_erinnerung, context = (userid),
+                                                time = thetime, days = thedays)
+        logger.info("Erinnerung wiedereingerichtet (" + str(userid) + ", " + str(hour) + ":" +
+                  str(minu) + ", " + "{:07b}".format(workdays) + ").")
+
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
     states={
@@ -741,6 +759,7 @@ erinner_mich_nicht_handler = CommandHandler('erinner_mich_nicht', erinner_mich_n
 dispatcher.add_handler(erinner_mich_nicht_handler)
 
 j = updater.job_queue
+requeue_reminders()
 
 updater.start_polling()
 updater.idle()
