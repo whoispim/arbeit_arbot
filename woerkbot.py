@@ -563,7 +563,7 @@ def psa(update: Update, context: CallbackContext):
     user = update.message.from_user
     if user.id == int(config.get("special_users","admin")):
         ids = [int(a.replace(".txt","")) for a in os.listdir("dbs") if "example" not in a]
-        psa_message = update.message.text.replace("/psa ", "")
+        psa_message = update.message.text.replace("/psa ", "").replace(".", "\.").replace("!", "\!").replace("_","\_")
         for userid in ids:
             try:
                 context.bot.send_message(chat_id=userid,
@@ -654,13 +654,13 @@ def die_erinnerung(context: CallbackContext):
             if lookfor in line.rstrip("\n"): erledigt = True
     
     if erledigt:
-        context.bot.send_message(chat_id=81558994, 
-                                 text = "Tip top, hast ja schon nen Eintrag")
         logger.info("User " + str(id) + " musste nicht erinnert werden.")
     else:
         try:
             context.bot.send_message(chat_id=81558994, 
-                                     text = "Machste nochwas?")
+                                     text = "Beep boop. Möchtest du heute noch einen Eintrag anlegen?\n" + 
+                                     "Eintrag anlegen: /a\n" + 
+                                     "Erinnerung deaktivieren: /erinner_mich_nicht")
             logger.info("User " + str(id) + " wurde erinnert.")
         except:
             logger.info("Erinnerung an User " + str(id) + " konnte nicht zugestellt werden.")
