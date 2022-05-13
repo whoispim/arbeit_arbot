@@ -250,20 +250,48 @@ def pause(update: Update, context: CallbackContext):
                                        funfacts[user.id]["bish"],
                                        funfacts[user.id]["bism"],
                                        funfacts[user.id]["pau"]])))
-    update.message.reply_text(update.message.text + ' also. \nGuten Feierabend! Nochmal: ' +
-                              funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
-                              funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
-                              funfacts[user.id]["pau"] + ".\nDas macht " + nicetime(zeit) + ".",)
-    f = open("dbs/" + str(user.id) + ".txt", "a+")
-
-    f.write(funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
+    outstring = (update.message.text + ' also. \nNochmal: ' +
+                 funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
+                 funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
+                 funfacts[user.id]["pau"] + ".\nDas macht " + nicetime(zeit) + ".\n")
+    newe = (funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
             funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
             funfacts[user.id]["bism"] + ";" + funfacts[user.id]["pau"] + "\n")
-    f.close
-    log(user, "Neuer Eintrag angelegt: " +
-        funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
-        funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
-        funfacts[user.id]["pau"])
+    with open("dbs/81558994.txt", "r") as f:
+        buch = f.readlines()
+        buch[1:] = sorted(buch[1:])
+        existed = False
+        for i, line in enumerate(buch):
+            if line[:11] == newe[:11]:
+                existed = True
+                outstring += ("Es existiert bereits ein Eintrag an diesem Tag:\n`" +
+                              newe.replace("\n","") + "`\n")
+                vonbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[11:13], line[14:16]])))
+                bisbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[17:19], line[20:22]])))
+                vonnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[11:13], newe[14:16]])))
+                bisnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[17:19], newe[20:22]])))
+                if (vonbook <= vonnewe < bisbook) or (vonnewe <= vonbook < bisnewe):
+                    print("AAAAAAAAAAAAAAAAAAAAAAAAAA!")
+#                    log(user, "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen")
+#                    update.message.reply_text("Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen!")
+#                    return ConversationHandler.END
+                between = max(vonnewe, vonbook) - min(bisnewe,bisbook) 
+                pause = between + timedelta(minutes = int(line[23:25]) + int(newe[23:25]))
+                buch[i]  = (min(vonbook,vonnewe).strftime("%Y;%m;%d;%H;%M;") + 
+                            max(bisbook,bisnewe).strftime("%H;%M;") + 
+                            str(int(pause.seconds/60)) + "\n")
+                # TODO add outro explanation
+
+    with open("dbs/81558994.txt", "w") as f:
+        f.writelines(buch)
+        if not existed:
+            f.write(newe)
+            log(user, "Neuer Eintrag angelegt: " +
+                funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
+                funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
+                funfacts[user.id]["pau"])
+            # TODO add guten tag noch
+            
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext):
@@ -591,7 +619,7 @@ def erinner_mich(update: Update, context: CallbackContext):
                           ['13','14','15','16','17','18'],
                           ['19','20','21','22','23','24']]
         update.message.reply_text("Diese Funktion erinnert dich an jedem Arbeitstag zur " + 
-                                  "eingetragegen Uhrzeit wenn noch kein Eintraf vorhanden ist.\n" +
+                                  "eingetragegen Uhrzeit wenn noch kein Eintrag vorhanden ist.\n" +
                                   "Wieviel Uhr? (Stunde)",
                                   reply_markup=ReplyKeyboardMarkup(reply_keyboard,
                                                                    one_time_keyboard=True))
