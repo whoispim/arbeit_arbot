@@ -257,7 +257,7 @@ def pause(update: Update, context: CallbackContext):
     newe = (funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
             funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
             funfacts[user.id]["bism"] + ";" + funfacts[user.id]["pau"] + "\n")
-    with open("dbs/81558994.txt", "r") as f:
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
         buch = f.readlines()
         buch[1:] = sorted(buch[1:])
         existed = False
@@ -265,33 +265,36 @@ def pause(update: Update, context: CallbackContext):
             if line[:11] == newe[:11]:
                 existed = True
                 outstring += ("Es existiert bereits ein Eintrag an diesem Tag:\n`" +
-                              newe.replace("\n","") + "`\n")
+                              line.replace("\n","") + "`\n")
                 vonbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[11:13], line[14:16]])))
                 bisbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[17:19], line[20:22]])))
                 vonnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[11:13], newe[14:16]])))
                 bisnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[17:19], newe[20:22]])))
                 if (vonbook <= vonnewe < bisbook) or (vonnewe <= vonbook < bisnewe):
-                    print("AAAAAAAAAAAAAAAAAAAAAAAAAA!")
-#                    log(user, "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen")
-#                    update.message.reply_text("Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen!")
-#                    return ConversationHandler.END
+                    log(user, "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen")
+                    update.message.reply_text("Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen!")
+                    return ConversationHandler.END
                 between = max(vonnewe, vonbook) - min(bisnewe,bisbook) 
                 pause = between + timedelta(minutes = int(line[23:25]) + int(newe[23:25]))
                 buch[i]  = (min(vonbook,vonnewe).strftime("%Y;%m;%d;%H;%M;") + 
                             max(bisbook,bisnewe).strftime("%H;%M;") + 
                             str(int(pause.seconds/60)) + "\n")
-                # TODO add outro explanation
+                outstring += ("Der neue Eintrag wurde zum vorhandenen hinzugefügt:\n`" + 
+                              buch[i].replace("\n","") + "`\n")
+                log(user, "Eintrag vereinigt zu " + buch[i].replace("\n",""))
 
+    if not existed:
+        buch.append(newe)
+        buch[1:] = sorted(buch[1:])
+        log(user, "Neuer Eintrag angelegt: " +
+            funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
+            funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
+            funfacts[user.id]["pau"])
+        
+    outstring += "Guten Feierabend!"
     with open("dbs/81558994.txt", "w") as f:
         f.writelines(buch)
-        if not existed:
-            f.write(newe)
-            log(user, "Neuer Eintrag angelegt: " +
-                funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
-                funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
-                funfacts[user.id]["pau"])
-            # TODO add guten tag noch
-            
+    update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!"), parse_mode=ParseMode.MARKDOWN_V2)
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext):
@@ -306,9 +309,6 @@ def zeitrechner(von_h, von_m, bis_h, bis_m, paus):
     return soviel
 
 def stats(update: Update, context: CallbackContext):
-    # context.bot.send_message(chat_id=timtimID,
-    #                          text=":3",
-    #                          parse_mode=ParseMode.MARKDOWN_V2)
     user = update.message.from_user
     if db_ok(user.id):
         log(user, "Stats abgerufen")
