@@ -2,6 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, ParseMode
 from telegram.ext import Updater, CallbackContext, CommandHandler, ConversationHandler, MessageHandler, Filters, CallbackQueryHandler
 from configparser import SafeConfigParser
 from datetime import datetime, date, timedelta, time
+import pytz
 import logging
 import math
 import matplotlib.pyplot as plt
@@ -22,9 +23,11 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
                               logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
-DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSERHOURS, NEWUSERDAYS, LOESCH_MICH, LOESCHER, INLINETEST =range(13)
+DATUM, VONH, VONM, BISH, BISM, PAUSE, REMOVE, RAUS, NEWUSERHOURS, NEWUSERDAYS, LOESCH_MICH, LOESCHER, INLINETEST, ERINNER_MICH2, ERINNERER =range(15)
 funfacts = {}
 hours_n_days = {}
+reminders = {}
+active_reminders = {}
 
 def log(user, text):
     logger.info(user.first_name + ", ID " + str(user.id) + ": " + text)
@@ -247,20 +250,51 @@ def pause(update: Update, context: CallbackContext):
                                        funfacts[user.id]["bish"],
                                        funfacts[user.id]["bism"],
                                        funfacts[user.id]["pau"]])))
-    update.message.reply_text(update.message.text + ' also. \nGuten Feierabend! Nochmal: ' +
-                              funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
-                              funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
-                              funfacts[user.id]["pau"] + ".\nDas macht " + nicetime(zeit) + ".",)
-    f = open("dbs/" + str(user.id) + ".txt", "a+")
-
-    f.write(funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
+    outstring = (update.message.text + ' also. \nNochmal: ' +
+                 funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
+                 funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
+                 funfacts[user.id]["pau"] + ".\nDas macht " + nicetime(zeit) + ".\n")
+    newe = (funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
             funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
             funfacts[user.id]["bism"] + ";" + funfacts[user.id]["pau"] + "\n")
-    f.close
-    log(user, "Neuer Eintrag angelegt: " +
-        funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
-        funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
-        funfacts[user.id]["pau"])
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
+        buch = f.readlines()
+        buch[1:] = sorted(buch[1:])
+        existed = False
+        for i, line in enumerate(buch):
+            if line[:11] == newe[:11]:
+                existed = True
+                outstring += ("Es existiert bereits ein Eintrag an diesem Tag:\n`" +
+                              line.replace("\n","") + "`\n")
+                vonbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[11:13], line[14:16]])))
+                bisbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[17:19], line[20:22]])))
+                vonnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[11:13], newe[14:16]])))
+                bisnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[17:19], newe[20:22]])))
+                if (vonbook <= vonnewe < bisbook) or (vonnewe <= vonbook < bisnewe):
+                    log(user, "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen")
+                    update.message.reply_text("Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen!")
+                    return ConversationHandler.END
+                between = max(vonnewe, vonbook) - min(bisnewe,bisbook) 
+                pause = between + timedelta(minutes = int(line[23:25]) + int(newe[23:25]))
+                buch[i]  = (min(vonbook,vonnewe).strftime("%Y;%m;%d;%H;%M;") + 
+                            max(bisbook,bisnewe).strftime("%H;%M;") + 
+                            str(int(pause.seconds/60)) + "\n")
+                outstring += ("Der neue Eintrag wurde zum vorhandenen hinzugefügt:\n`" + 
+                              buch[i].replace("\n","") + "`\n")
+                log(user, "Eintrag vereinigt zu " + buch[i].replace("\n",""))
+
+    if not existed:
+        buch.append(newe)
+        buch[1:] = sorted(buch[1:])
+        log(user, "Neuer Eintrag angelegt: " +
+            funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
+            funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
+            funfacts[user.id]["pau"])
+        
+    outstring += "Guten Feierabend!"
+    with open("dbs/81558994.txt", "w") as f:
+        f.writelines(buch)
+    update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!"), parse_mode=ParseMode.MARKDOWN_V2)
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext):
@@ -275,9 +309,6 @@ def zeitrechner(von_h, von_m, bis_h, bis_m, paus):
     return soviel
 
 def stats(update: Update, context: CallbackContext):
-    # context.bot.send_message(chat_id=timtimID,
-    #                          text=":3",
-    #                          parse_mode=ParseMode.MARKDOWN_V2)
     user = update.message.from_user
     if db_ok(user.id):
         log(user, "Stats abgerufen")
@@ -534,6 +565,9 @@ def loesch_mich(update: Update, context: CallbackContext):
 def loescher(update: Update, context: CallbackContext):
     user = update.message.from_user
     os.remove("dbs/" + str(user.id) + ".txt")
+    if os.path.exists("reminders/" + str(user.id) + ".txt"):
+            os.remove("reminders/" + str(user.id) + ".txt")
+            active_reminders[user.id].schedule_removal()
     log(user, "Dienstbuch gelöscht!")
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text="Okay. Machs gut!")
@@ -557,7 +591,7 @@ def psa(update: Update, context: CallbackContext):
     user = update.message.from_user
     if user.id == int(config.get("special_users","admin")):
         ids = [int(a.replace(".txt","")) for a in os.listdir("dbs") if "example" not in a]
-        psa_message = update.message.text.replace("/psa ", "")
+        psa_message = update.message.text.replace("/psa ", "").replace(".", "\.").replace("!", "\!").replace("_","\_")
         for userid in ids:
             try:
                 context.bot.send_message(chat_id=userid,
@@ -566,48 +600,116 @@ def psa(update: Update, context: CallbackContext):
                 log(user, "PSA sent to " + str(userid) + ".")
             except:
                 log(user, "PSA Error! Bot may be blocked by " + str(userid) + ".")
-                
-def inlinetest(update: Update, context: CallbackContext):
+    
+def erinner_mich(update: Update, context: CallbackContext):
     user = update.message.from_user
-    hours_n_days[user.id] = [0,0b0000000]
-    if user.id == int(config.get("special_users","admin")):
-        keyboard = [[InlineKeyboardButton("Mo", callback_data=64),
-                     InlineKeyboardButton("Di", callback_data=32),
-                     InlineKeyboardButton("Mi", callback_data=16),
-                     InlineKeyboardButton("Do", callback_data=8),
-                     InlineKeyboardButton("Fr", callback_data=4),
-                     InlineKeyboardButton("Sa", callback_data=2),
-                     InlineKeyboardButton("So", callback_data=1)],
-                     [InlineKeyboardButton("Fertig", callback_data="fertig")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(chat_id=update.effective_chat.id, 
-                                 text="Ausgewählt: " + strikedays(hours_n_days[user.id][1]),
-                                 reply_markup=reply_markup,
-                                 parse_mode=ParseMode.MARKDOWN_V2)
+    if not db_ok(user.id):
+        update.message.reply_text("Bitte erst mit /start ein Dienstbuch anlegen.")
+        log(user, "Erinnerung ohne Useraccount anlegen?!")
+        return ConversationHandler.END
         
-def button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    user = query.from_user
-    query.answer()
-    keyboard = [[InlineKeyboardButton("Mo", callback_data=64),
-                 InlineKeyboardButton("Di", callback_data=32),
-                 InlineKeyboardButton("Mi", callback_data=16),
-                 InlineKeyboardButton("Do", callback_data=8),
-                 InlineKeyboardButton("Fr", callback_data=4),
-                 InlineKeyboardButton("Sa", callback_data=2),
-                 InlineKeyboardButton("So", callback_data=1)],
-                 [InlineKeyboardButton("Fertig", callback_data="fertig")]]
-    if query.data == "fertig":
-        query.edit_message_text(text="Ausgewählt: " + strikedays(hours_n_days[user.id][1]) + 
-                                "\nAuswahl beendet\. Der Bot ist nun einsatzbereit\.\n" + 
-                                "Bitte lege nun mit \/a deinen ersten Eintrag an\.",
-                                parse_mode=ParseMode.MARKDOWN_V2)
+    if os.path.exists("reminders/" + str(user.id) + ".txt"):
+        update.message.reply_text("Es ist bereits eine Erinnerung vermerkt. Bitte entferne diese zuerst.")
+        log(user, "Erinnerung bereits vermerkt.")
+        return ConversationHandler.END
     else:
-        hours_n_days[user.id][1] = hours_n_days[user.id][1] ^ int(query.data)
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        query.edit_message_text(text="Ausgewählt: " + strikedays(hours_n_days[user.id][1]),
-                                reply_markup=reply_markup,
-                                parse_mode=ParseMode.MARKDOWN_V2)
+        reminders[user.id] = {}
+        reply_keyboard = [['01','02','03','04','05','06'],
+                          ['07','08','09','10','11','12'],
+                          ['13','14','15','16','17','18'],
+                          ['19','20','21','22','23','24']]
+        update.message.reply_text("Diese Funktion erinnert dich an jedem Arbeitstag zur " + 
+                                  "eingetragegen Uhrzeit wenn noch kein Eintrag vorhanden ist.\n" +
+                                  "Wieviel Uhr? (Stunde)",
+                                  reply_markup=ReplyKeyboardMarkup(reply_keyboard,
+                                                                   one_time_keyboard=True))
+        return ERINNER_MICH2
+    
+def erinner_mich2(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    reminders[user.id]["hour"] = update.message.text
+    reply_keyboard = [['05','10','15'],
+                      ['20','25','30'],
+                      ['35','40','45'],
+                      ['50','55','00']]
+    update.message.reply_text('Wieviel Uhr? (Minute)',
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard,
+                                                               one_time_keyboard=True))
+    return ERINNERER
+
+def erinnerer(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    reminders[user.id]["minute"] = update.message.text
+    with open("reminders/" + str(user.id) + ".txt", "w") as f:
+        f.write(reminders[user.id]["hour"] + ";" + reminders[user.id]["minute"])
+    thetime = time(int(reminders[user.id]["hour"]), int(reminders[user.id]["minute"]), tzinfo = pytz.timezone("Europe/Berlin"))
+
+    thedays = ()
+    with open("dbs/" + str(user.id) + ".txt") as f:
+        workdays = int(f.readline().rstrip("\n").split(";")[1], 2)
+    for i in range(7):
+        if 64 >> i & workdays:
+            thedays = thedays + (i,)
+    
+    active_reminders[user.id] = j.run_daily(die_erinnerung, context = (user.id),
+                                            time = thetime, days = thedays)
+    update.message.reply_text("Arbeitstägliche Erinnerung für " + 
+                              reminders[user.id]["hour"] + ":" + reminders[user.id]["minute"] + 
+                              " angelegt.")
+    log(user, "Erinnerung eingerichtet (" + reminders[user.id]["hour"] + ":" +
+              reminders[user.id]["minute"] + ", " + "{:07b}".format(workdays) + ").")
+    return ConversationHandler.END
+
+def erinner_mich_nicht(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    if os.path.exists("reminders/" + str(user.id) + ".txt"):
+            os.remove("reminders/" + str(user.id) + ".txt")
+            active_reminders[user.id].schedule_removal()
+            log(user, "Erinnerung gelöscht.")
+            context.bot.send_message(chat_id=update.effective_chat.id, 
+                                     text = "Erinnerung entfernt.")
+    else:
+        log(user, "Erinnerungslöschversuch misglückt.")
+        context.bot.send_message(chat_id=update.effective_chat.id, 
+                                     text = "Keine Erinnerung gefunden.")
+
+def die_erinnerung(context: CallbackContext):
+    id = context.job.context
+    lookfor = date.today().strftime("%Y;%m;%d")
+    erledigt = False
+    with open("dbs/" + str(id) + ".txt", "r") as f:
+        for line in f:
+            if lookfor in line.rstrip("\n"): erledigt = True
+    
+    if erledigt:
+        logger.info("User " + str(id) + " musste nicht erinnert werden.")
+    else:
+        try:
+            context.bot.send_message(chat_id=81558994, 
+                                     text = "Beep boop. Möchtest du heute noch einen Eintrag anlegen?\n" + 
+                                     "Eintrag anlegen: /a\n" + 
+                                     "Erinnerung deaktivieren: /erinner_mich_nicht")
+            logger.info("User " + str(id) + " wurde erinnert.")
+        except:
+            logger.info("Erinnerung an User " + str(id) + " konnte nicht zugestellt werden.")
+
+def requeue_reminders():
+    ids = [int(a.replace(".txt","")) for a in os.listdir("reminders") if "example" not in a]
+    for userid in ids:
+        with open("reminders/" + str(userid) + ".txt", "r") as f:
+            hour, minu = list(map(int, f.readline().split(";")))
+        thetime = time(hour, minu, tzinfo = pytz.timezone("Europe/Berlin"))
+        thedays = ()
+        with open("dbs/" + str(userid) + ".txt") as f:
+            workdays = int(f.readline().rstrip("\n").split(";")[1], 2)
+        for i in range(7):
+            if 64 >> i & workdays:
+                thedays = thedays + (i,)
+        
+        active_reminders[userid] = j.run_daily(die_erinnerung, context = (userid),
+                                                time = thetime, days = thedays)
+        logger.info("Erinnerung wiedereingerichtet (" + str(userid) + ", " + str(hour) + ":" +
+                  "{:02n}".format(minu) + ", " + "{:07b}".format(workdays) + ").")
 
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
@@ -647,6 +749,15 @@ loesch_mich_handler = ConversationHandler(
     fallbacks=[CommandHandler('cancel', cancel)],
 )
 
+erinner_mich_handler = ConversationHandler(
+    entry_points=[CommandHandler('erinner_mich',erinner_mich)],
+    states={
+        ERINNER_MICH2: [MessageHandler(Filters.regex('^[0-9]+$'), erinner_mich2)],
+        ERINNERER: [MessageHandler(Filters.regex('^[0-9]+$'), erinnerer)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel)],
+)
+
 #start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 dispatcher.add_handler(conv_handler)
@@ -670,6 +781,13 @@ show_users_handler = CommandHandler('show_users', show_users)
 dispatcher.add_handler(show_users_handler)
 psa_handler = CommandHandler('psa', psa)
 dispatcher.add_handler(psa_handler)
+
+dispatcher.add_handler(erinner_mich_handler)
+erinner_mich_nicht_handler = CommandHandler('erinner_mich_nicht', erinner_mich_nicht)
+dispatcher.add_handler(erinner_mich_nicht_handler)
+
+j = updater.job_queue
+requeue_reminders()
 
 updater.start_polling()
 updater.idle()
