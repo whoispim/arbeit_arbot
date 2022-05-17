@@ -286,13 +286,10 @@ def pause(update: Update, context: CallbackContext):
     if not existed:
         buch.append(newe)
         buch[1:] = sorted(buch[1:])
-        log(user, "Neuer Eintrag angelegt: " +
-            funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ";" +
-            funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ";" +
-            funfacts[user.id]["pau"])
+        log(user, "Neuer Eintrag angelegt: " + newe.replace("\n",""))
         
     outstring += "Guten Feierabend!"
-    with open("dbs/81558994.txt", "w") as f:
+    with open("dbs/" + str(user.id) + ".txt", "w") as f:
         f.writelines(buch)
     update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!"), parse_mode=ParseMode.MARKDOWN_V2)
     return ConversationHandler.END
@@ -685,7 +682,7 @@ def die_erinnerung(context: CallbackContext):
         logger.info("User " + str(id) + " musste nicht erinnert werden.")
     else:
         try:
-            context.bot.send_message(chat_id=81558994, 
+            context.bot.send_message(chat_id = id, 
                                      text = "Beep boop. Möchtest du heute noch einen Eintrag anlegen?\n" + 
                                      "Eintrag anlegen: /a\n" + 
                                      "Erinnerung deaktivieren: /erinner_mich_nicht")
