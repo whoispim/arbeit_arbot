@@ -627,7 +627,7 @@ def erinner_mich(update: Update, context: CallbackContext):
     
 def erinner_mich2(update: Update, context: CallbackContext):
     user = update.message.from_user
-    reminders[user.id]["hour"] = int(update.message.text)
+    reminders[user.id]["hour"] = update.message.text
     reply_keyboard = [['05','10','15'],
                       ['20','25','30'],
                       ['35','40','45'],
@@ -639,10 +639,10 @@ def erinner_mich2(update: Update, context: CallbackContext):
 
 def erinnerer(update: Update, context: CallbackContext):
     user = update.message.from_user
-    reminders[user.id]["minute"] = int(update.message.text)
+    reminders[user.id]["minute"] = update.message.text
     with open("reminders/" + str(user.id) + ".txt", "w") as f:
-        f.write(str(reminders[user.id]["hour"]) + ";" + str(reminders[user.id]["minute"]))
-    thetime = time(reminders[user.id]["hour"], reminders[user.id]["minute"], tzinfo = pytz.timezone("Europe/Berlin"))
+        f.write(reminders[user.id]["hour"] + ";" + reminders[user.id]["minute"])
+    thetime = time(int(reminders[user.id]["hour"]), int(reminders[user.id]["minute"]), tzinfo = pytz.timezone("Europe/Berlin"))
 
     thedays = ()
     with open("dbs/" + str(user.id) + ".txt") as f:
@@ -654,10 +654,10 @@ def erinnerer(update: Update, context: CallbackContext):
     active_reminders[user.id] = j.run_daily(die_erinnerung, context = (user.id),
                                             time = thetime, days = thedays)
     update.message.reply_text("Arbeitstägliche Erinnerung für " + 
-                              str(reminders[user.id]["hour"]) + ":" + str(reminders[user.id]["minute"]) + 
+                              reminders[user.id]["hour"] + ":" + reminders[user.id]["minute"] + 
                               " angelegt.")
-    log(user, "Erinnerung eingerichtet (" + str(reminders[user.id]["hour"]) + ":" +
-              str(reminders[user.id]["minute"]) + ", " + "{:07b}".format(workdays) + ").")
+    log(user, "Erinnerung eingerichtet (" + reminders[user.id]["hour"] + ":" +
+              reminders[user.id]["minute"] + ", " + "{:07b}".format(workdays) + ").")
     return ConversationHandler.END
 
 def erinner_mich_nicht(update: Update, context: CallbackContext):
@@ -709,7 +709,7 @@ def requeue_reminders():
         active_reminders[userid] = j.run_daily(die_erinnerung, context = (userid),
                                                 time = thetime, days = thedays)
         logger.info("Erinnerung wiedereingerichtet (" + str(userid) + ", " + str(hour) + ":" +
-                  str(minu) + ", " + "{:07b}".format(workdays) + ").")
+                  "{:02n}".format(minu) + ", " + "{:07b}".format(workdays) + ").")
 
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
