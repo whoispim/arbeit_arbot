@@ -81,7 +81,8 @@ def start(update: Update, context: CallbackContext):
                  "Dieser Bot ist ein Hobbyprojekt und aktiv in Entwicklung. "
                  "Bitte verlasse dich nicht darauf, dass alles immer korrekt "
                  "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
-                 "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
+                 "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n"
+                 "Erklärungen zu den Kommandos findest du unter /help\n\n"
                  "Zur akkuraten Berechnung von Überstunden benötigt der Bot die Anzahl "
                  "deiner wöchentlichen Arbeitsstunden. Bitte gib sie nun ein.")
 #    outstring = outstring.replace(".", "\.")
@@ -491,7 +492,7 @@ def stats(update: Update, context: CallbackContext):
     else:
         log(user, "Error! Stats konnten nicht erstellt werden, Datei existiert nicht.")
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
+                                 text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
     
 def raw(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -505,6 +506,39 @@ def raw(update: Update, context: CallbackContext):
         log(user, "Error! Rohdaten konnten nicht abgerufen werden, Datei existiert nicht.")
         context.bot.send_message(chat_id=update.effective_chat.id,
                                          text="Error! Bitte erst über /start ein Dienstbuch anlegen und mit /a einen Eintrag anlegen.")
+
+def helper(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    log(user, "Hilfe..!")
+    outstring = ("Hallo!\n"
+                 "Dieser Bot ist ein Hobbyprojekt und aktiv in Entwicklung. "
+                 "Bitte verlasse dich nicht darauf, dass alles immer korrekt "
+                 "ausgegeben wird und sei dir bewusst, dass ich Einsicht in "
+                 "alle gespeicherten Daten habe und diese zu Fehlerbehebung auch nutze.\n\n"
+                 "Kommandoübersicht:\n"
+                 "/a beginnt einen neuen Eintrag in dein Dienstbuch. Der Bot fragt dich nach Datum, "
+                 "Start- und Endzeit und nach Pausenzeiten. Sollte bereits ein Eintrag an diesem Tag "
+                 "vorhanden sein werden die Einträge zusammengeführt.\n"
+                 "/start legt dein Dienstbuch an oder erlaubt dir, deine Basisinformationen "
+                 "(Wochenstunden und Arbeitstage) zu ändern.\n"
+                 "/cancel kann verwendet werden um jeden mehrstufigen Befehl abzubrechen.\n"
+                 "/stats zeigt dir eine graphische Auswertung deines Dienstbuchs an sowie "
+                 "Statistiken zu dieser und letzter Woche, diesem und letztem Monat und "
+                 "deiner Gesamtarbeitszeit. Ganz wird dein aktuelles Überstundenkonto ausgegeben.\n"
+                 "/raw gibt dein Dienstbuch in Rohform aus. So wird es vom Bot geschrieben und gelesen.\n"
+                 "/remove erlaubt dir, einzelne Einträge aus deinem Dienstbuch zu löschen.\n"
+                 "/erinner\_mich richtet eine Erinnerung ein. Der Bot wird dich an Arbeitstagen "
+                 "zu einer von dir bestimmten Uhrzeit an das Eintragen erinnern. Diese Erinnerung wird nicht "
+                 "durchgeführt falls du zu diesem Zeitpunkt bereits einen Eintrag angelegt hast.\n"
+                 "/erinner\_mich\_nicht deaktiviert eine eingerichtete Erinnerung.\n"
+                 "/loesch\_mich löscht dein gesamtes Dienstbuch.\n\n"
+                 "Zusätzlich ist zu beachten, dass derzeit auch Feiertage manuell eingetragen werden müssen. "
+                 "Lege dafür am entsprechenden Tag einfach einen Eintrag an, dessen Länge deiner "
+                 "durchschnittlichen Tagesarbeitszeit entspricht.")
+    outstring = outstring.replace("/","\/").replace(".","\.").replace("!","\!").replace("-","\-").replace("(","\(").replace(")","\)")
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text=outstring,
+                             parse_mode=ParseMode.MARKDOWN_V2)    
         
 def remove(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -772,6 +806,8 @@ stats_handler = CommandHandler('stats', stats)
 dispatcher.add_handler(stats_handler)
 raw_handler = CommandHandler('raw', raw)
 dispatcher.add_handler(raw_handler)
+help_handler = CommandHandler('help', helper)
+dispatcher.add_handler(help_handler)
 
 #remove_handler = CommandHandler('remove', remove)
 #dispatcher.add_handler(conv_handler)
