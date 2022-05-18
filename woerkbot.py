@@ -130,6 +130,11 @@ def newuserdays(update: Update, context: CallbackContext):
         query.edit_message_text(text="An welchen Tagen arbeitest du?\nAusgewählt: " + strikedays(hours_n_days[user.id][1]),
                                 reply_markup=reply_markup,
                                 parse_mode=ParseMode.MARKDOWN_V2)
+    elif hours_n_days[user.id][1] == 0:
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            query.edit_message_text(text="Bitte wähle mindestens einen Tag aus\.\nAusgewählt: " + strikedays(hours_n_days[user.id][1]),
+                                    reply_markup=reply_markup,
+                                    parse_mode=ParseMode.MARKDOWN_V2)
     else:
         if os.path.exists("dbs/" + str(user.id) + ".txt"):
             with open("dbs/" + str(user.id) + ".txt", "r") as f:
@@ -732,7 +737,7 @@ remconv_handler = ConversationHandler(
 start_handler = ConversationHandler(
     entry_points=[CommandHandler('start',start)],
     states={
-        NEWUSERHOURS: [MessageHandler(Filters.regex('^[0-9]+$'), newuserhours)],
+        NEWUSERHOURS: [MessageHandler(Filters.regex('^[1-9][0-9]*$'), newuserhours)],
         NEWUSERDAYS: [CallbackQueryHandler(newuserdays)],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
