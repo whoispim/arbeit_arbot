@@ -455,7 +455,7 @@ def stats(update: Update, context: CallbackContext):
             datemax = datetime.combine(day7, time.min) + timedelta(hours = 12)
             weeklyavg[week] = [[[datemin, datemax], [avg, avg]], numdays]
             totalOT = [[],[]]
-            run_tot = 6
+            run_tot = hourperday
             for key in sorted(weeklyavg.keys()):
                 totalOT[0].extend(weeklyavg[key][0][0])
                 run_tot += (weeklyavg[key][0][1][0] - hourperday) * weeklyavg[key][1] / daysperweek
