@@ -6,6 +6,8 @@ import pytz
 import logging
 import math
 import matplotlib.pyplot as plt
+from matplotlib import cm
+import numpy as np
 from operator import itemgetter
 import os
 import warnings # this warning is apparently normal..
@@ -43,9 +45,15 @@ def db_ok(uid):
     else:
         return False
 
+def zeitrechner(von_h, von_m, bis_h, bis_m, paus):
+    soviel = bis_h - von_h + (bis_m - von_m - paus) / 60
+    return soviel
+
 def nicetime(hours):
     hour = int(hours)
     minute = math.floor((hours * 60 % 60) + .5)
+    if hours < 0:
+        minute *= -1
     if minute == 60:
         hour += 1
         minute = 0
@@ -260,6 +268,12 @@ def pause(update: Update, context: CallbackContext):
                  funfacts[user.id]["vonh"] + ":" + funfacts[user.id]["vonm"] + ", " +
                  funfacts[user.id]["bish"] + ":" + funfacts[user.id]["bism"] + ", " +
                  funfacts[user.id]["pau"] + ".\nDas macht " + nicetime(zeit) + ".\n")
+    if zeit <= 0:
+        outstring += ("Dein Eintrag ist ist 0 oder weniger Stunden lang und wurde deswegen nicht angelegt. "
+                      "Wenn du einen Tag frei machst musst du das übrigens nicht Eintragen!")
+        log(user, "Eintrag war zu kurz, abgebrochen.")
+        update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!").replace("-","\-"), parse_mode=ParseMode.MARKDOWN_V2)
+        return ConversationHandler.END
     newe = (funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
             funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
             funfacts[user.id]["bism"] + ";" + funfacts[user.id]["pau"] + "\n")
@@ -297,7 +311,7 @@ def pause(update: Update, context: CallbackContext):
     outstring += "Guten Feierabend!"
     with open("dbs/" + str(user.id) + ".txt", "w") as f:
         f.writelines(buch)
-    update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!"), parse_mode=ParseMode.MARKDOWN_V2)
+    update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!").replace("-","\-"), parse_mode=ParseMode.MARKDOWN_V2)
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext):
@@ -306,10 +320,6 @@ def cancel(update: Update, context: CallbackContext):
     update.message.reply_text('OK, dann besser nicht.',
                               reply_markup = ReplyKeyboardRemove())
     return ConversationHandler.END
-
-def zeitrechner(von_h, von_m, bis_h, bis_m, paus):
-    soviel = bis_h - von_h + (bis_m - von_m - paus) / 60
-    return soviel
 
 def stats(update: Update, context: CallbackContext):
     user = update.message.from_user
@@ -402,6 +412,7 @@ def stats(update: Update, context: CallbackContext):
                      "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
                      "Soll: " + nicetime(hourperday * alltime_workdays) + "\n" +
                      "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n")
+        # irgendwas läuft hier schief... soll wird manchmal falsch berechnet..?
         
         ueber_unter = hourperday * alltime_workdays - sum(times)
         if ueber_unter == 0:
@@ -471,10 +482,15 @@ def stats(update: Update, context: CallbackContext):
         plt.style.use("ggplot")
         fig,ax = plt.subplots()
         fig.set_size_inches(11, 5, forward=True)
-        ax.bar(datelist,timelist, color="#2a9c48")
-        ax.plot(*totaltest, color='#b24720', linestyle="-", linewidth = 3, alpha = .15, solid_capstyle='round')
+        bars = ax.bar(datelist,timelist, color="#2a9c48")
+        weekday1 = datelist[0].weekday()
+        colo = cm.Greens(np.linspace(0,1,30))[17:24][::-1]
+        for bar in bars:
+            bar.set_facecolor(colo[weekday1]) #daycolor(weekday1))
+            weekday1 = (weekday1 + 1) % 7
+        ax.plot(*totaltest, color="#b24720", linestyle="-", linewidth = 3, alpha = .15, solid_capstyle="round")
         for week in weeklyavg:
-            ax.plot(*weeklyavg[week][0], color='#124720', linestyle=':')
+            ax.plot(*weeklyavg[week][0], color="#124720", linestyle=':')
         ax.autoscale(enable=True, axis='x', tight=True)
         ax.set_yticks(range(math.ceil(max(timelist))))
         ax.set_xticks(datelist)
