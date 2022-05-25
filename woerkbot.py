@@ -83,6 +83,61 @@ def is_workday(daydate, workdays): # bit shift by weekday and bitwise comparison
         return True
     else:
         return False
+    
+def make_entry(user, newe, outstring):
+    with open("dbs/" + str(user.id) + ".txt", "r") as f:
+        buch = f.readlines()
+        if "Urlaub" in newe:
+            h, d = buch[0].rstrip("\n").split(";")
+            hourperweek = int(h)
+            workdays = int(d,2)
+            daysperweek = bin(workdays).count("1")
+            hourperday = hourperweek / daysperweek
+            start = time(hour=1, minute=1)
+            end = datetime.combine(date.today(), start)+ timedelta(hours = hourperday)
+            newe = newe[:-6] + "00;01;" + end.strftime("%H;%M;0")
+            outstring = "Urlaubs- bzw. Feiertagseintrag mit üblicher Tagesarbeitszeit.\n"
+
+        buch[1:] = sorted(buch[1:])
+        existed = False
+        for i, line in enumerate(buch):
+            if line[:11] == newe[:11]:
+                existed = True
+                outstring += ("Es existiert bereits ein Eintrag an diesem Tag:\n`" +
+                              line.replace("\n","") + "`\n")
+                vonbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[11:13], line[14:16]])))
+                bisbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[17:19], line[20:22]])))
+                vonnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[11:13], newe[14:16]])))
+                bisnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[17:19], newe[20:22]])))
+                if (vonbook <= vonnewe < bisbook) or (vonnewe <= vonbook < bisnewe):
+                    log(user, "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen")
+                    outstring += "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen!"
+                    return outstring
+                between = max(vonnewe, vonbook) - min(bisnewe,bisbook) 
+                pause = between + timedelta(minutes = int(line[23:25]) + int(newe[23:25]))
+                buch[i]  = (min(vonbook,vonnewe).strftime("%Y;%m;%d;%H;%M;") + 
+                            max(bisbook,bisnewe).strftime("%H;%M;") + 
+                            str(int(pause.seconds/60)) + "\n")
+                outstring += ("Der neue Eintrag wurde zum vorhandenen hinzugefügt:\n`" + 
+                              buch[i].replace("\n","") + "`\n")
+                log(user, "Eintrag vereinigt zu " + buch[i].replace("\n",""))
+
+    if not existed:
+        buch.append(newe)
+        buch[1:] = sorted(buch[1:])
+        log(user, "Neuer Eintrag angelegt: " + newe.replace("\n",""))
+        
+    outstring += "Guten Feierabend!"
+    with open("dbs/" + str(user.id) + ".txt", "w") as f:
+        f.writelines(buch)
+        
+    return outstring
+
+def escape_markdown(outstring):
+    doof = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for dumm in doof:
+        outstring = outstring.replace(dumm,"\\"+dumm)
+    return outstring
 
 def start(update: Update, context: CallbackContext):
     outstring = ("Hallo!\n"
@@ -202,7 +257,8 @@ def datum(update: Update, context: CallbackContext):
     reply_keyboard = [['01','02','03','04','05','06'],
                       ['07','08','09','10','11','12'],
                       ['13','14','15','16','17','18'],
-                      ['19','20','21','22','23','24']
+                      ['19','20','21','22','23','24'],
+                      ["Urlaubs- oder Feiertag"]
                      ]
     update.message.reply_text('Ab wann? (Stunde)',
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard,
@@ -211,6 +267,14 @@ def datum(update: Update, context: CallbackContext):
 
 def vonh(update: Update, context: CallbackContext):
     user = update.message.from_user
+    if update.message.text == "Urlaubs- oder Feiertag":
+        newe = funfacts[user.id]["date"] + ";Urlaub"
+        outstring = make_entry(user, newe, "")
+        update.message.reply_text(escape_markdown(outstring),
+                                  parse_mode=ParseMode.MARKDOWN_V2)
+        return ConversationHandler.END
+
+        
     funfacts[user.id]["vonh"] = update.message.text
     reply_keyboard = [['05','10','15'],
                       ['20','25','30'],
@@ -272,46 +336,16 @@ def pause(update: Update, context: CallbackContext):
         outstring += ("Dein Eintrag ist ist 0 oder weniger Stunden lang und wurde deswegen nicht angelegt. "
                       "Wenn du einen Tag frei machst musst du das übrigens nicht Eintragen!")
         log(user, "Eintrag war zu kurz, abgebrochen.")
-        update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!").replace("-","\-"), parse_mode=ParseMode.MARKDOWN_V2)
+        update.message.reply_text(escape_markdown(outstring), parse_mode=ParseMode.MARKDOWN_V2)
         return ConversationHandler.END
     newe = (funfacts[user.id]["date"] + ";" + funfacts[user.id]["vonh"] + ";" +
             funfacts[user.id]["vonm"] + ";" + funfacts[user.id]["bish"] + ";" +
             funfacts[user.id]["bism"] + ";" + funfacts[user.id]["pau"] + "\n")
-    with open("dbs/" + str(user.id) + ".txt", "r") as f:
-        buch = f.readlines()
-        buch[1:] = sorted(buch[1:])
-        existed = False
-        for i, line in enumerate(buch):
-            if line[:11] == newe[:11]:
-                existed = True
-                outstring += ("Es existiert bereits ein Eintrag an diesem Tag:\n`" +
-                              line.replace("\n","") + "`\n")
-                vonbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[11:13], line[14:16]])))
-                bisbook = datetime(*list(map(int, [line[:4], line[5:7], line[8:10], line[17:19], line[20:22]])))
-                vonnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[11:13], newe[14:16]])))
-                bisnewe = datetime(*list(map(int, [newe[:4], newe[5:7], newe[8:10], newe[17:19], newe[20:22]])))
-                if (vonbook <= vonnewe < bisbook) or (vonnewe <= vonbook < bisnewe):
-                    log(user, "Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen")
-                    update.message.reply_text("Neuer Eintrag überlappt vorhandenen Eintrag, Aktion abgebrochen!")
-                    return ConversationHandler.END
-                between = max(vonnewe, vonbook) - min(bisnewe,bisbook) 
-                pause = between + timedelta(minutes = int(line[23:25]) + int(newe[23:25]))
-                buch[i]  = (min(vonbook,vonnewe).strftime("%Y;%m;%d;%H;%M;") + 
-                            max(bisbook,bisnewe).strftime("%H;%M;") + 
-                            str(int(pause.seconds/60)) + "\n")
-                outstring += ("Der neue Eintrag wurde zum vorhandenen hinzugefügt:\n`" + 
-                              buch[i].replace("\n","") + "`\n")
-                log(user, "Eintrag vereinigt zu " + buch[i].replace("\n",""))
-
-    if not existed:
-        buch.append(newe)
-        buch[1:] = sorted(buch[1:])
-        log(user, "Neuer Eintrag angelegt: " + newe.replace("\n",""))
-        
-    outstring += "Guten Feierabend!"
-    with open("dbs/" + str(user.id) + ".txt", "w") as f:
-        f.writelines(buch)
-    update.message.reply_text(outstring.replace(".", "\.").replace("!", "\!").replace("-","\-"), parse_mode=ParseMode.MARKDOWN_V2)
+    
+    outstring = make_entry(user, newe, outstring)
+    
+    update.message.reply_text(escape_markdown(outstring),
+                              parse_mode=ParseMode.MARKDOWN_V2)
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext):
@@ -421,8 +455,6 @@ def stats(update: Update, context: CallbackContext):
             outstring += "Du bist " + nicetime(ueber_unter) + " im Minus.\n\n"
         else:
             outstring += "Du bist " + nicetime(-ueber_unter) + " im Plus.\n\n"
-        
-        outstring = outstring.replace(".", "\.")
 
         timelist = [0] * (dayrange.days+1)
         for i, dat in enumerate(datelist):
@@ -504,7 +536,8 @@ def stats(update: Update, context: CallbackContext):
             context.bot.send_photo(chat_id=update.effective_chat.id,
                                    photo = pho)
             
-        update.message.reply_text(outstring, parse_mode=ParseMode.MARKDOWN_V2)
+        update.message.reply_text(escape_markdown(outstring),
+                                  parse_mode=ParseMode.MARKDOWN_V2)
     else:
         log(user, "Error! Stats konnten nicht erstellt werden, Datei existiert nicht.")
         context.bot.send_message(chat_id=update.effective_chat.id,
@@ -549,11 +582,10 @@ def helper(update: Update, context: CallbackContext):
                  "/erinner\_mich\_nicht deaktiviert eine eingerichtete Erinnerung.\n"
                  "/loesch\_mich löscht dein gesamtes Dienstbuch.\n\n"
                  "Zusätzlich ist zu beachten, dass derzeit auch Feiertage manuell eingetragen werden müssen. "
-                 "Lege dafür am entsprechenden Tag einfach einen Eintrag an, dessen Länge deiner "
-                 "durchschnittlichen Tagesarbeitszeit entspricht.")
-    outstring = outstring.replace("/","\/").replace(".","\.").replace("!","\!").replace("-","\-").replace("(","\(").replace(")","\)")
+                 "Lege dafür einen Eintrag für den entsprechenden Tag an, scrolle bei der Startzeit nach unten und "
+                 "wähle den passenden Button aus. Es wird ein Eintrag erstellt, der deiner regulären Tagesarbeitszeit entspricht.")
     context.bot.send_message(chat_id=update.effective_chat.id,
-                             text=outstring,
+                             text=escape_markdown(outstring),
                              parse_mode=ParseMode.MARKDOWN_V2)    
         
 def remove(update: Update, context: CallbackContext):
@@ -643,14 +675,15 @@ def psa(update: Update, context: CallbackContext):
     user = update.message.from_user
     if user.id == int(config.get("special_users","admin")):
         ids = [int(a.replace(".txt","")) for a in os.listdir("dbs") if "example" not in a]
-        psa_message = update.message.text.replace("/psa ", "").replace(".", "\.").replace("!", "\!").replace("_","\_")
+        psa_message = escape_markdown(update.message.text.replace("/psa ", ""))
         for userid in ids:
             try:
                 context.bot.send_message(chat_id=userid,
                                          text=psa_message,
                                          parse_mode=ParseMode.MARKDOWN_V2)
                 log(user, "PSA sent to " + str(userid) + ".")
-            except:
+            except Exception as e:
+                print(e)
                 log(user, "PSA Error! Bot may be blocked by " + str(userid) + ".")
     
 def erinner_mich(update: Update, context: CallbackContext):
@@ -766,8 +799,8 @@ def requeue_reminders():
 conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
     states={
-        DATUM: [MessageHandler(Filters.regex('^[0-9;]+$|Heute|Gestern|Vorgestern'), datum)],
-        VONH: [MessageHandler(Filters.regex('^[0-9]+$'), vonh)],
+        DATUM: [MessageHandler(Filters.regex('^([0-9;]+|Heute|Gestern|Vorgestern)$'), datum)],
+        VONH: [MessageHandler(Filters.regex('^([0-9]+|Urlaubs- oder Feiertag)$'), vonh)],
         VONM: [MessageHandler(Filters.regex('^[0-9]+$'), vonm)],
         BISH: [MessageHandler(Filters.regex('^[0-9]+$'), bish)],
         BISM: [MessageHandler(Filters.regex('^[0-9]+$'), bism)],
