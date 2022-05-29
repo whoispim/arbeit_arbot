@@ -93,9 +93,9 @@ def make_entry(user, newe, outstring):
             workdays = int(d,2)
             daysperweek = bin(workdays).count("1")
             hourperday = hourperweek / daysperweek
-            start = time(hour=1, minute=1)
+            start = time(hour=0, minute=1)
             end = datetime.combine(date.today(), start)+ timedelta(hours = hourperday)
-            newe = newe[:-6] + "00;01;" + end.strftime("%H;%M;0")
+            newe = newe[:-6] + "00;01;" + end.strftime("%H;%M;0") + "\n"
             outstring = "Urlaubs- bzw. Feiertagseintrag mit üblicher Tagesarbeitszeit.\n"
 
         buch[1:] = sorted(buch[1:])
@@ -437,7 +437,7 @@ def stats(update: Update, context: CallbackContext):
             if is_workday(day, workdays):
                 alltime_workdays += 1
         
-        if date.today() not in [a[0] for a in ndata]: # dont count today if there isnt an entry already
+        if date.today() not in [a[0] for a in ndata] and is_workday(date.today(), workdays): # dont count today if there isnt an entry already
             alltime_workdays -= 1
         
         times = [row[5] for row in ndata]
@@ -446,7 +446,6 @@ def stats(update: Update, context: CallbackContext):
                      "Durchschn. Zeit: " + nicetime(sum(times)/len(times)) + "\n" +
                      "Soll: " + nicetime(hourperday * alltime_workdays) + "\n" +
                      "Arbeitszeit ges.: " + nicetime(sum(times)) + "\n")
-        # irgendwas läuft hier schief... soll wird manchmal falsch berechnet..?
         
         ueber_unter = hourperday * alltime_workdays - sum(times)
         if ueber_unter == 0:
@@ -471,12 +470,11 @@ def stats(update: Update, context: CallbackContext):
             days = [i for i in ndata if i[4] == week]
             # für aktuelle und erste woche nicht alle tage rechnen
             if week == date.today().isocalendar()[1]: 
-                numdays = len(days)
                 numdays = 0
                 for day in [date.today()-timedelta(days = x) for x in range(date.today().weekday()+1)]:
                     if is_workday(day, workdays):
                         numdays += 1
-                if date.today() not in [a[0] for a in ndata]: # dont count today if there isnt an entry already
+                if date.today() not in [a[0] for a in ndata] and is_workday(date.today(), workdays): # dont count today if there isnt an entry already
                     numdays -= 1
             elif week == min(weeks):
                 numdays = 0
@@ -536,7 +534,7 @@ def stats(update: Update, context: CallbackContext):
             context.bot.send_photo(chat_id=update.effective_chat.id,
                                    photo = pho)
             
-        update.message.reply_text(escape_markdown(outstring),
+        update.message.reply_text(outstring.replace(".","\."),
                                   parse_mode=ParseMode.MARKDOWN_V2)
     else:
         log(user, "Error! Stats konnten nicht erstellt werden, Datei existiert nicht.")
