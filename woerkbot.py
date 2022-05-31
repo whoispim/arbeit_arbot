@@ -87,7 +87,7 @@ def is_workday(daydate, workdays): # bit shift by weekday and bitwise comparison
 def make_entry(user, newe, outstring):
     with open("dbs/" + str(user.id) + ".txt", "r") as f:
         buch = f.readlines()
-        if "Urlaub" in newe:
+        if newe[-1] == "u" or newe[-1] == "f":
             h, d = buch[0].rstrip("\n").split(";")
             hourperweek = int(h)
             workdays = int(d,2)
@@ -95,13 +95,17 @@ def make_entry(user, newe, outstring):
             hourperday = hourperweek / daysperweek
             start = time(hour=0, minute=1)
             end = datetime.combine(date.today(), start)+ timedelta(hours = hourperday)
-            newe = newe[:-6] + "00;01;" + end.strftime("%H;%M;0") + "\n"
+            newe = newe[:11] + "00;01;" + end.strftime("%H;%M;") + newe[-1] + "\n"
             outstring = "Urlaubs- bzw. Feiertagseintrag mit üblicher Tagesarbeitszeit.\n"
 
         buch[1:] = sorted(buch[1:])
         existed = False
         for i, line in enumerate(buch):
             if line[:11] == newe[:11]:
+                if line[-1] == "f" or line[-1] == "u":
+                    line[-1] = 0
+                if newe[-1] == "f" or newe[-1] == "u":
+                    newe[-1] = 0
                 existed = True
                 outstring += ("Es existiert bereits ein Eintrag an diesem Tag:\n`" +
                               line.replace("\n","") + "`\n")
@@ -258,7 +262,7 @@ def datum(update: Update, context: CallbackContext):
                       ['07','08','09','10','11','12'],
                       ['13','14','15','16','17','18'],
                       ['19','20','21','22','23','24'],
-                      ["Urlaubs- oder Feiertag"]
+                      ["Urlaubstag","Feiertag"]
                      ]
     update.message.reply_text('Ab wann? (Stunde)',
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard,
@@ -267,8 +271,14 @@ def datum(update: Update, context: CallbackContext):
 
 def vonh(update: Update, context: CallbackContext):
     user = update.message.from_user
-    if update.message.text == "Urlaubs- oder Feiertag":
-        newe = funfacts[user.id]["date"] + ";Urlaub"
+    if update.message.text == "Urlaubstag":
+        newe = funfacts[user.id]["date"] + ";u"
+        outstring = make_entry(user, newe, "")
+        update.message.reply_text(escape_markdown(outstring),
+                                  parse_mode=ParseMode.MARKDOWN_V2)
+        return ConversationHandler.END
+    if update.message.text == "Feiertag":
+        newe = funfacts[user.id]["date"] + ";f"
         outstring = make_entry(user, newe, "")
         update.message.reply_text(escape_markdown(outstring),
                                   parse_mode=ParseMode.MARKDOWN_V2)
@@ -798,7 +808,7 @@ conv_handler = ConversationHandler(
     entry_points=[CommandHandler('a',neuearbeit)],
     states={
         DATUM: [MessageHandler(Filters.regex('^([0-9;]+|Heute|Gestern|Vorgestern)$'), datum)],
-        VONH: [MessageHandler(Filters.regex('^([0-9]+|Urlaubs- oder Feiertag)$'), vonh)],
+        VONH: [MessageHandler(Filters.regex('^([0-9]+|Urlaubstag|Feiertag)$'), vonh)],
         VONM: [MessageHandler(Filters.regex('^[0-9]+$'), vonm)],
         BISH: [MessageHandler(Filters.regex('^[0-9]+$'), bish)],
         BISM: [MessageHandler(Filters.regex('^[0-9]+$'), bism)],
