@@ -523,8 +523,12 @@ def stats(update: Update, context: CallbackContext):
             ax.plot(*weeklyavg[week][0], color="#124720", linestyle=':')
         ax.autoscale(enable=True, axis='x', tight=True)
         ax.set_yticks(range(math.ceil(max(timelist))))
-        ax.set_xticks(datelist)
-        ax.set_xticklabels(datelist,rotation=90)
+        # datelist auf montage reduzieren wenn zu lang
+        if len(datelist) >= 90:
+            ticdatelist = [x for x in datelist if x.weekday() == 0]
+        else: ticdatelist = datelist
+        ax.set_xticks(ticdatelist)
+        ax.set_xticklabels(ticdatelist,rotation=90)
         ax.axhline(y = hourperday, color='k', linestyle='--')
         plt.tight_layout()
         plt.savefig("plots/" + str(user.id) + ".png")
