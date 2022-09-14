@@ -574,17 +574,16 @@ def helper(update: Update, context: CallbackContext):
                  "deiner Gesamtarbeitszeit. Ganz wird dein aktuelles Überstundenkonto ausgegeben.\n"
                  "/raw gibt dein Dienstbuch in Rohform aus. So wird es vom Bot geschrieben und gelesen.\n"
                  "/remove erlaubt dir, einzelne Einträge aus deinem Dienstbuch zu löschen.\n"
-                 "/erinner\_mich richtet eine Erinnerung ein. Der Bot wird dich an Arbeitstagen "
+                 "/erinner_mich richtet eine Erinnerung ein. Der Bot wird dich an Arbeitstagen "
                  "zu einer von dir bestimmten Uhrzeit an das Eintragen erinnern. Diese Erinnerung wird nicht "
                  "durchgeführt falls du zu diesem Zeitpunkt bereits einen Eintrag angelegt hast.\n"
-                 "/erinner\_mich\_nicht deaktiviert eine eingerichtete Erinnerung.\n"
-                 "/loesch\_mich löscht dein gesamtes Dienstbuch.\n\n"
+                 "/erinner_mich_nicht deaktiviert eine eingerichtete Erinnerung.\n"
+                 "/loesch_mich löscht dein gesamtes Dienstbuch.\n\n"
                  "Zusätzlich ist zu beachten, dass derzeit auch Feiertage manuell eingetragen werden müssen. "
                  "Lege dafür einen Eintrag für den entsprechenden Tag an, scrolle bei der Startzeit nach unten und "
                  "wähle den passenden Button aus. Es wird ein Eintrag erstellt, der deiner regulären Tagesarbeitszeit entspricht.")
     context.bot.send_message(chat_id=update.effective_chat.id,
-                             text=escape_markdown(outstring),
-                             parse_mode=ParseMode.MARKDOWN_V2)    
+                             text=outstring)    
         
 def remove(update: Update, context: CallbackContext):
     user = update.message.from_user
